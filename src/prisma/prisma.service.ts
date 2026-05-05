@@ -1,30 +1,50 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  type INestApplication,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { Prisma } from '.prisma/client';
+import { Logger } from 'nestjs-pino';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(PrismaService.name);
-
-  constructor() {
+  constructor(private readonly logger: Logger) {
     super({
-      log:
-        process.env.NODE_ENV === 'development'
-          ? [
-              { emit: 'event', level: 'query' },
-              { emit: 'event', level: 'warn' },
-              { emit: 'event', level: 'error' },
-            ]
-          : [{ emit: 'event', level: 'error' }],
+      log: [
+        { emit: 'event', level: 'error' },
+        { emit: 'event', level: 'warn' },
+      ] satisfies Prisma.LogDefinition[],
     });
+    // Bridge Prisma's event log into Pino
+    (this as unknown as PrismaClient).$on('error' as never, (e: Prisma.LogEvent) =>
+      this.logger.error({ err: e }, 'prisma error'),
+    );
+    (this as unknown as PrismaClient).$on('warn' as never, (e: Prisma.LogEvent) =>
+      this.logger.warn({ err: e }, 'prisma warning'),
+    );
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
-    this.logger.log('Prisma connected');
+    try {
+      await this.$connect();
+    } catch (err) {
+      this.logger.error({ err }, 'Prisma failed to connect on startup — continuing; health check will report DB as down');
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
-    this.logger.log('Prisma disconnected');
+  }
+
+  /**
+   * Wire process signals so the Nest application closes Prisma cleanly on shutdown.
+   * Call from main.ts after `app.enableShutdownHooks()`.
+   */
+  enableShutdownHooks(app: INestApplication): void {
+    process.on('beforeExit', () => {
+      void app.close();
+    });
   }
 }

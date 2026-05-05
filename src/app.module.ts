@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { LoggerModule } from 'nestjs-pino';
-import { validateEnv } from './config/env.config';
+import { LoggerModule } from './common/logger/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { HealthModule } from './modules/health/health.module';
+import { validateEnv } from './config/env.config';
 
 @Module({
   imports: [
@@ -10,27 +11,9 @@ import { PrismaModule } from './prisma/prisma.module';
       isGlobal: true,
       validate: validateEnv,
     }),
-    LoggerModule.forRoot({
-      pinoHttp: {
-        level: process.env.LOG_LEVEL ?? 'info',
-        transport:
-          process.env.NODE_ENV === 'development'
-            ? {
-                target: 'pino-pretty',
-                options: {
-                  colorize: true,
-                  translateTime: 'SYS:HH:MM:ss.l',
-                  ignore: 'pid,hostname',
-                },
-              }
-            : undefined,
-        redact: {
-          paths: ['req.headers.authorization', 'req.headers.cookie'],
-          censor: '[REDACTED]',
-        },
-      },
-    }),
+    LoggerModule,
     PrismaModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
