@@ -1,12 +1,595 @@
-// El schema completo será copiado manualmente por el usuario después del scaffolding.
-// Este placeholder solo tiene el generator y el datasource.
+// Indexes deliberately not represented in this schema (DB-only, partial WHERE clauses):
+//   - uq_certs_one_sweep_per_cycle
+//   - uq_investors_one_internal
+//   - uq_mnh_one_current_per_merchant
+//   - idx_certs_status (partial WHERE deleted_at IS NULL)
+//   - idx_orders_eligibility (partial WHERE status = 'available')
+//   - idx_end_users_national_id (partial WHERE national_id IS NOT NULL)
+// They live in infra/sql/003_portfolio.sql and 004_issuance.sql.
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
+  provider        = "prisma-client-js"
+  output          = "../node_modules/.prisma/client"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["cfb"]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  operator
+  admin
+  auditor
+
+  @@map("user_role")
+  @@schema("cfb")
+}
+
+enum AuditEntityType {
+  batch
+  order
+  installment
+  certificate
+  certificate_order
+  investor
+  merchant
+  end_user
+  user
+  setting
+  system
+
+  @@map("audit_entity_type")
+  @@schema("cfb")
+}
+
+enum BatchStatus {
+  uploaded
+  parsing
+  imported
+  rejected
+  archived
+
+  @@map("batch_status")
+  @@schema("cfb")
+}
+
+enum CertificateStatus {
+  draft
+  issued
+  matured
+  cancelled
+
+  @@map("certificate_status")
+  @@schema("cfb")
+}
+
+enum CertificateType {
+  standard
+  sweep
+
+  @@map("certificate_type")
+  @@schema("cfb")
+}
+
+enum DocumentKind {
+  excel_upload
+  certificate_pdf
+  attachment
+
+  @@map("document_kind")
+  @@schema("cfb")
+}
+
+enum InstallmentStatus {
+  pending
+  due
+  paid
+  overdue
+
+  @@map("installment_status")
+  @@schema("cfb")
+}
+
+enum InvestorKind {
+  juridica
+  natural
+  internal
+
+  @@map("investor_kind")
+  @@schema("cfb")
+}
+
+enum InvestorStatus {
+  active
+  inactive
+
+  @@map("investor_status")
+  @@schema("cfb")
+}
+
+enum OrderStatus {
+  available
+  assigned
+  matured
+  defaulted
+
+  @@map("order_status")
+  @@schema("cfb")
+}
+
+// ---------------------------------------------------------------------------
+// Transversal
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique @db.VarChar
+  full_name     String    @db.VarChar
+  role          UserRole  @default(operator)
+  is_active     Boolean   @default(true)
+  last_login_at DateTime? @db.Timestamptz(6)
+  created_at    DateTime  @default(dbgenerated("now()")) @db.Timestamptz(6)
+  auth_user_id  String?   @unique @db.Uuid
+
+  // Relations (back-references)
+  role_permissions    RolePermission[]
+  audit_logs          AuditLog[]
+  order_events        OrderEvent[]
+  installment_events  InstallmentEvent[]
+  investors           Investor[]
+  certificates_issued Certificate[]      @relation("issued_by")
+  certificates_deleted Certificate[]     @relation("deleted_by")
+  certificate_orders  CertificateOrder[]
+  certificate_events  CertificateEvent[]
+  settings            Setting[]
+  documents           Document[]
+  excel_uploads       ExcelUpload[]
+
+  @@map("users")
+  @@schema("cfb")
+}
+
+model Permission {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique @db.VarChar
+  description String
+  created_at  DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  role_permissions RolePermission[]
+
+  @@index([key], map: "idx_permissions_key")
+  @@map("permissions")
+  @@schema("cfb")
+}
+
+model RolePermission {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role          UserRole
+  permission_id String    @db.Uuid
+  granted_at    DateTime  @default(dbgenerated("now()")) @db.Timestamptz(6)
+  granted_by_id String?   @db.Uuid
+
+  // Relations
+  permission  Permission @relation(fields: [permission_id], references: [id])
+  granted_by  User?      @relation(fields: [granted_by_id], references: [id])
+
+  @@unique([role, permission_id], map: "role_permissions_role_permission_id_key")
+  @@index([permission_id], map: "idx_role_perms_perm")
+  @@index([role], map: "idx_role_perms_role")
+  @@map("role_permissions")
+  @@schema("cfb")
+}
+
+model AuditLog {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occurred_at DateTime        @default(dbgenerated("now()")) @db.Timestamptz(6)
+  actor_id    String?         @db.Uuid
+  action      String          @db.VarChar
+  entity_type AuditEntityType
+  entity_id   String?         @db.VarChar
+  ip_address  String?         @db.VarChar
+  user_agent  String?
+  payload     Json            @default("{}")
+
+  // Relations
+  actor User? @relation(fields: [actor_id], references: [id])
+
+  @@index([action], map: "idx_audit_action")
+  @@index([actor_id, occurred_at(sort: Desc)], map: "idx_audit_actor")
+  @@index([entity_type, entity_id], map: "idx_audit_entity")
+  @@index([occurred_at(sort: Desc)], map: "idx_audit_occurred")
+  @@map("audit_log")
+  @@schema("cfb")
+}
+
+model Setting {
+  id                            Int      @id @default(1)
+  shortfall_warning_threshold   Decimal  @default(0.005) @db.Decimal(7, 6)
+  concentration_warning_threshold Decimal @default(0.15) @db.Decimal(7, 6)
+  default_sweep_rate            Decimal  @default(0.08) @db.Decimal(7, 6)
+  updated_at                    DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+  updated_by_id                 String?  @db.Uuid
+
+  // Relations
+  updated_by User? @relation(fields: [updated_by_id], references: [id])
+
+  @@map("settings")
+  @@schema("cfb")
+}
+
+model Document {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind            DocumentKind
+  entity_type     String       @db.VarChar
+  entity_id       String       @db.VarChar
+  filename        String       @db.VarChar
+  storage_path    String       @db.VarChar
+  storage_bucket  String       @db.VarChar
+  content_hash    String       @db.VarChar
+  file_size_bytes BigInt
+  mime_type       String       @db.VarChar
+  uploaded_at     DateTime     @default(dbgenerated("now()")) @db.Timestamptz(6)
+  uploaded_by_id  String       @db.Uuid
+
+  // Relations
+  uploaded_by User @relation(fields: [uploaded_by_id], references: [id])
+
+  @@index([entity_type, entity_id], map: "idx_documents_entity")
+  @@index([kind], map: "idx_documents_kind")
+  @@map("documents")
+  @@schema("cfb")
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion
+// ---------------------------------------------------------------------------
+
+model ExcelUpload {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  filename        String   @db.VarChar
+  storage_path    String   @db.VarChar
+  storage_bucket  String   @db.VarChar
+  content_hash    String   @db.VarChar
+  file_size_bytes BigInt
+  mime_type       String   @db.VarChar
+  uploaded_at     DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+  uploaded_by_id  String   @db.Uuid
+
+  // Relations
+  uploaded_by User    @relation(fields: [uploaded_by_id], references: [id])
+  batch       Batch?
+
+  @@index([content_hash], map: "idx_excel_uploads_hash")
+  @@index([uploaded_at(sort: Desc)], map: "idx_excel_uploads_uploaded_at")
+  @@index([uploaded_by_id], map: "idx_excel_uploads_user")
+  @@map("excel_uploads")
+  @@schema("cfb")
+}
+
+model Batch {
+  id                        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_code             String      @unique @db.VarChar
+  excel_upload_id           String      @unique @db.Uuid
+  status                    BatchStatus @default(uploaded)
+  rows_imported             Int         @default(0)
+  rows_rejected             Int         @default(0)
+  total_orders_amount       Decimal     @default(0) @db.Decimal(18, 4)
+  total_installments_amount Decimal     @default(0) @db.Decimal(18, 4)
+  imported_at               DateTime?   @db.Timestamptz(6)
+  rejection_reason          String?
+
+  // Relations
+  excel_upload          ExcelUpload           @relation(fields: [excel_upload_id], references: [id])
+  orders                Order[]
+  import_errors         ImportError[]
+  merchant_name_history MerchantNameHistory[]
+
+  @@index([imported_at(sort: Desc)], map: "idx_batches_imported_at")
+  @@index([status], map: "idx_batches_status")
+  @@map("batches")
+  @@schema("cfb")
+}
+
+model ImportError {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batch_id      String   @db.Uuid
+  sheet_name    String   @db.VarChar
+  row_number    Int
+  field_name    String?  @db.VarChar
+  error_code    String   @db.VarChar
+  error_message String
+  raw_value     String?
+  created_at    DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  batch Batch @relation(fields: [batch_id], references: [id])
+
+  @@index([batch_id, sheet_name, row_number], map: "idx_import_errors_batch")
+  @@index([error_code], map: "idx_import_errors_code")
+  @@map("import_errors")
+  @@schema("cfb")
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio
+// ---------------------------------------------------------------------------
+
+model Merchant {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rif          String   @unique @db.VarChar
+  current_name String   @db.VarChar
+  first_seen_at DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+  last_seen_at  DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  orders                Order[]
+  merchant_name_history MerchantNameHistory[]
+
+  @@index([current_name], map: "idx_merchants_name")
+  @@map("merchants")
+  @@schema("cfb")
+}
+
+model MerchantNameHistory {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchant_id     String    @db.Uuid
+  name            String    @db.VarChar
+  effective_from  DateTime  @db.Timestamptz(6)
+  effective_to    DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(dbgenerated("now()")) @db.Timestamptz(6)
+  source_batch_id String?   @db.Uuid
+
+  // Relations
+  merchant     Merchant @relation(fields: [merchant_id], references: [id])
+  source_batch Batch?   @relation(fields: [source_batch_id], references: [id])
+
+  // Note: uq_mnh_one_current_per_merchant is a partial unique index (WHERE effective_to IS NULL)
+  // and is intentionally excluded from this schema. See comment at top of file.
+  @@index([merchant_id, effective_from(sort: Desc)], map: "idx_mnh_merchant_from")
+  @@index([merchant_id, effective_to], map: "idx_mnh_merchant_to")
+  @@map("merchant_name_history")
+  @@schema("cfb")
+}
+
+model EndUser {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_hash String    @unique @db.VarChar
+  full_name     String?   @db.VarChar
+  national_id   String?   @db.VarChar
+  email         String?   @db.VarChar
+  phone         String?   @db.VarChar
+  enriched_at   DateTime? @db.Timestamptz(6)
+  first_seen_at DateTime  @default(dbgenerated("now()")) @db.Timestamptz(6)
+  last_seen_at  DateTime  @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  orders Order[]
+
+  // Note: idx_end_users_national_id is a partial index (WHERE national_id IS NOT NULL)
+  // and is intentionally excluded. See comment at top of file.
+  @@map("end_users")
+  @@schema("cfb")
+}
+
+model Order {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_order_id String      @unique @db.VarChar
+  batch_id          String      @db.Uuid
+  merchant_id       String      @db.Uuid
+  end_user_id       String      @db.Uuid
+  total_amount      Decimal     @db.Decimal(18, 4)
+  installments_sum  Decimal     @db.Decimal(18, 4)
+  num_installments  Int
+  purchase_date     DateTime    @db.Date
+  max_due_date      DateTime    @db.Date
+  status            OrderStatus @default(available)
+  imported_at       DateTime    @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  batch              Batch             @relation(fields: [batch_id], references: [id])
+  merchant           Merchant          @relation(fields: [merchant_id], references: [id])
+  end_user           EndUser           @relation(fields: [end_user_id], references: [id])
+  installments       Installment[]
+  order_events       OrderEvent[]
+  certificate_orders CertificateOrder[]
+
+  // Note: idx_orders_eligibility is a partial index (WHERE status = 'available')
+  // and is intentionally excluded. See comment at top of file.
+  @@index([batch_id], map: "idx_orders_batch")
+  @@index([end_user_id], map: "idx_orders_end_user")
+  @@index([merchant_id], map: "idx_orders_merchant")
+  @@index([purchase_date(sort: Desc)], map: "idx_orders_purchase")
+  @@map("orders")
+  @@schema("cfb")
+}
+
+model OrderEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id   String   @db.Uuid
+  event_type String   @db.VarChar
+  payload    Json     @default("{}")
+  actor_id   String?  @db.Uuid
+  occurred_at DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  order Order  @relation(fields: [order_id], references: [id])
+  actor User?  @relation(fields: [actor_id], references: [id])
+
+  @@index([order_id, occurred_at(sort: Desc)], map: "idx_order_events_order")
+  @@index([event_type], map: "idx_order_events_type")
+  @@map("order_events")
+  @@schema("cfb")
+}
+
+model Installment {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_installment_id String            @unique @db.VarChar
+  order_id                String            @db.Uuid
+  installment_number      Int
+  amount                  Decimal           @db.Decimal(18, 4)
+  due_date                DateTime          @db.Date
+  status                  InstallmentStatus @default(pending)
+  paid_at                 DateTime?         @db.Timestamptz(6)
+  paid_amount             Decimal?          @db.Decimal(18, 4)
+
+  // Relations
+  order               Order              @relation(fields: [order_id], references: [id])
+  installment_events  InstallmentEvent[]
+
+  @@unique([order_id, installment_number], map: "installments_order_id_installment_number_key")
+  @@index([due_date, status], map: "idx_installments_due_status")
+  @@index([status], map: "idx_installments_status")
+  @@map("installments")
+  @@schema("cfb")
+}
+
+model InstallmentEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  installment_id  String   @db.Uuid
+  event_type      String   @db.VarChar
+  payload         Json     @default("{}")
+  actor_id        String?  @db.Uuid
+  occurred_at     DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  installment Installment @relation(fields: [installment_id], references: [id])
+  actor       User?       @relation(fields: [actor_id], references: [id])
+
+  @@index([installment_id, occurred_at(sort: Desc)], map: "idx_installment_events_inst")
+  @@index([event_type], map: "idx_installment_events_type")
+  @@map("installment_events")
+  @@schema("cfb")
+}
+
+// ---------------------------------------------------------------------------
+// Issuance
+// ---------------------------------------------------------------------------
+
+model Investor {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  legal_name    String         @db.VarChar
+  rif           String         @unique @db.VarChar
+  kind          InvestorKind   @default(juridica)
+  status        InvestorStatus @default(active)
+  email         String?        @db.VarChar
+  phone         String?        @db.VarChar
+  notes         String?
+  created_at    DateTime       @default(dbgenerated("now()")) @db.Timestamptz(6)
+  created_by_id String?        @db.Uuid
+
+  // Relations
+  created_by   User?         @relation(fields: [created_by_id], references: [id])
+  certificates Certificate[]
+
+  // Note: uq_investors_one_internal is a partial unique index (WHERE kind = 'internal')
+  // and is intentionally excluded. See comment at top of file.
+  @@index([legal_name], map: "idx_investors_name")
+  @@index([status], map: "idx_investors_status")
+  @@map("investors")
+  @@schema("cfb")
+}
+
+model CertificateSequence {
+  id             Int      @id @default(1)
+  current_number Int      @default(4571)
+  current_letter String   @default("A") @db.VarChar
+  updated_at     DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  @@map("certificate_sequence")
+  @@schema("cfb")
+}
+
+model Certificate {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  certificate_code String            @unique @db.VarChar
+  certificate_type CertificateType   @default(standard)
+  status           CertificateStatus @default(issued)
+  investor_id      String            @db.Uuid
+  investor_capital Decimal           @db.Decimal(18, 4)
+  annual_rate      Decimal           @db.Decimal(7, 6)
+  rate_basis       String            @default("ACT/360") @db.VarChar
+  term_days        Int
+  price            Decimal           @db.Decimal(18, 4)
+  nominal_target   Decimal           @db.Decimal(18, 4)
+  nominal_actual   Decimal           @db.Decimal(18, 4)
+  investor_paid    Decimal           @db.Decimal(18, 4)
+  investor_returned Decimal          @db.Decimal(18, 4)
+  investor_yield   Decimal           @db.Decimal(18, 4)
+  shortfall_pct    Decimal           @db.Decimal(7, 6)
+  issue_date       DateTime          @db.Date
+  maturity_date    DateTime          @db.Date
+  matured_at       DateTime?         @db.Timestamptz(6)
+  cycle_week       String            @db.VarChar
+  payload_hash     String            @db.VarChar
+  issued_by_id     String            @db.Uuid
+  created_at       DateTime          @default(dbgenerated("now()")) @db.Timestamptz(6)
+  deleted_at       DateTime?         @db.Timestamptz(6)
+  deleted_by_id    String?           @db.Uuid
+  deleted_reason   String?
+
+  // Relations
+  investor           Investor           @relation(fields: [investor_id], references: [id])
+  issued_by          User               @relation("issued_by", fields: [issued_by_id], references: [id])
+  deleted_by         User?              @relation("deleted_by", fields: [deleted_by_id], references: [id])
+  certificate_orders CertificateOrder[]
+  certificate_events CertificateEvent[]
+
+  // Note: uq_certs_one_sweep_per_cycle and idx_certs_status are partial indexes
+  // and are intentionally excluded. See comment at top of file.
+  @@index([cycle_week], map: "idx_certs_cycle")
+  @@index([investor_id], map: "idx_certs_investor")
+  @@index([issue_date(sort: Desc)], map: "idx_certs_issue_date")
+  @@index([issued_by_id], map: "idx_certs_issued_by")
+  @@index([maturity_date], map: "idx_certs_maturity")
+  @@index([certificate_type, cycle_week], map: "idx_certs_type_cycle")
+  @@map("certificates")
+  @@schema("cfb")
+}
+
+model CertificateOrder {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  certificate_id           String    @db.Uuid
+  order_id                 String    @unique @db.Uuid
+  installments_sum_snapshot Decimal  @db.Decimal(18, 4)
+  assigned_at              DateTime  @default(dbgenerated("now()")) @db.Timestamptz(6)
+  assigned_by_id           String    @db.Uuid
+  released_at              DateTime? @db.Timestamptz(6)
+  released_reason          String?
+
+  // Relations
+  certificate  Certificate @relation(fields: [certificate_id], references: [id])
+  order        Order       @relation(fields: [order_id], references: [id])
+  assigned_by  User        @relation(fields: [assigned_by_id], references: [id])
+
+  @@index([assigned_at(sort: Desc)], map: "idx_co_assigned_at")
+  @@index([certificate_id], map: "idx_co_cert")
+  @@map("certificate_orders")
+  @@schema("cfb")
+}
+
+model CertificateEvent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  certificate_id String   @db.Uuid
+  event_type     String   @db.VarChar
+  payload        Json     @default("{}")
+  actor_id       String?  @db.Uuid
+  occurred_at    DateTime @default(dbgenerated("now()")) @db.Timestamptz(6)
+
+  // Relations
+  certificate Certificate @relation(fields: [certificate_id], references: [id])
+  actor       User?       @relation(fields: [actor_id], references: [id])
+
+  @@index([certificate_id, occurred_at(sort: Desc)], map: "idx_cert_events_cert")
+  @@index([event_type], map: "idx_cert_events_type")
+  @@map("certificate_events")
+  @@schema("cfb")
 }
