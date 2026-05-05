@@ -3,6 +3,25 @@
 -- Idempotent. Apply with: psql -f 001_init.sql or paste into Supabase SQL Editor.
 -- Depends on: nothing.
 
+-- ------------------------------------------------------------
+-- KNOWN DIVERGENCES FROM IDEAL STATE (preserved for byte-equivalence)
+-- ------------------------------------------------------------
+-- This migration is a faithful capture of the live Supabase state. Two
+-- minor concerns flagged during code review are intentionally preserved:
+--   1) cfb.is_admin() and cfb.is_authenticated_user() lack
+--      SECURITY DEFINER and SET search_path. They call current_user_role()
+--      (which IS SECURITY DEFINER), so privilege is inherited transitively;
+--      the missing search_path is a theoretical hardening, not a known
+--      exploit. To address: change in Supabase first via a follow-up
+--      migration, then re-extract.
+--   2) idx_permissions_key on cfb.permissions duplicates the implicit
+--      index of UNIQUE constraint permissions_key_key. To address: drop
+--      from Supabase first, then re-extract.
+--
+-- Fixing these in this migration without first changing Supabase would
+-- break byte-equivalence with the live DB.
+-- ------------------------------------------------------------
+
 BEGIN;
 
 -- ============================================================
@@ -103,8 +122,7 @@ CREATE TABLE IF NOT EXISTS cfb.users (
 -- The auth.users FK is declared separately because that schema is owned by Supabase.
 -- The DROP/ADD pattern makes this block idempotent on re-runs.
 ALTER TABLE cfb.users
-  DROP CONSTRAINT IF EXISTS users_auth_user_id_fkey;
-ALTER TABLE cfb.users
+  DROP CONSTRAINT IF EXISTS users_auth_user_id_fkey,
   ADD CONSTRAINT users_auth_user_id_fkey
     FOREIGN KEY (auth_user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
