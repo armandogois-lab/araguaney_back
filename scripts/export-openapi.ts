@@ -1,32 +1,29 @@
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppModule } from '../src/app.module';
-import { version as appVersion } from '../package.json';
 
 async function exportOpenApi(): Promise<void> {
   const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix('api');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Araguaney API')
-    .setDescription('Backend del sistema de empaquetado CFB de Cashea')
-    .setVersion(appVersion)
+  const config = new DocumentBuilder()
+    .setTitle('Cashea CFB API')
+    .setDescription('Backend para emisión de Certificados de Financiamiento Bursátil')
+    .setVersion('0.1.0')
     .addBearerAuth()
     .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  const document = SwaggerModule.createDocument(app, config);
 
-  const outputPath = resolve(process.cwd(), 'openapi.json');
-  writeFileSync(outputPath, JSON.stringify(document, null, 2), 'utf8');
+  const outPath = join(process.cwd(), 'openapi.json');
+  writeFileSync(outPath, JSON.stringify(document, null, 2) + '\n', 'utf8');
+  console.log(`OpenAPI spec written to ${outPath}`);
 
   await app.close();
-
-  // eslint-disable-next-line no-console
-  console.log(`OpenAPI spec written to ${outputPath}`);
 }
 
-exportOpenApi().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error('Failed to export OpenAPI spec', err);
+void exportOpenApi().catch((err) => {
+  console.error(err);
   process.exit(1);
 });
