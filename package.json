@@ -30,6 +30,7 @@
     "@nestjs/swagger": "^7.4.2",
     "@prisma/client": "^5.22.0",
     "helmet": "^8.0.0",
+    "jose": "^6.2.3",
     "nestjs-pino": "^4.4.0",
     "nestjs-zod": "^3.0.0",
     "pino": "^9.5.0",
