@@ -1,6 +1,7 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { HealthService } from './health.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 const VERSION = '0.1.0';
 
@@ -9,6 +10,7 @@ const VERSION = '0.1.0';
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
+  @Public()
   @Get()
   async health() {
     let database;
