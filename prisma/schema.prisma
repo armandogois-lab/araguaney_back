@@ -1,0 +1,12 @@
+// El schema completo será copiado manualmente por el usuario después del scaffolding.
+// Este placeholder solo tiene el generator y el datasource.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
