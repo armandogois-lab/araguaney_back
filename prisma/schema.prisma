@@ -13,10 +13,13 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-  schemas   = ["cfb"]
+  provider = "postgresql"
+  // Slice 0: pooler (DATABASE_URL) returned "Tenant or user not found" on this
+  // Supabase project; direct connection works fine for the 3-operator workload.
+  // Reactivate the pooler later by switching `url` back to DATABASE_URL and
+  // adding `directUrl = env("DIRECT_URL")`.
+  url      = env("DIRECT_URL")
+  schemas  = ["cfb"]
 }
 
 // ---------------------------------------------------------------------------
