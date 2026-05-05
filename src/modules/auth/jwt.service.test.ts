@@ -2,12 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from './jwt.service';
+import type { EnvConfig } from '../../config/env.config';
 import { mintTestJwt, TEST_SECRET } from '../../../test/helpers/jwt.helper';
 
 function makeService(secret = TEST_SECRET): JwtService {
   const config = {
     get: (key: string) => (key === 'SUPABASE_JWT_SECRET' ? secret : undefined),
-  } as unknown as ConfigService;
+  } as unknown as ConfigService<EnvConfig, true>;
   return new JwtService(config);
 }
 
