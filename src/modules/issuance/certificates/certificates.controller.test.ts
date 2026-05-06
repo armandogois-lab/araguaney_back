@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { ConflictException, INestApplication, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, INestApplication, NotFoundException } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
