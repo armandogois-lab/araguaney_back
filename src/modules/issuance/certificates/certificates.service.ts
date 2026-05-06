@@ -19,6 +19,7 @@ import type { CertificateSimulate, CertificateIssue, CertificatesListQuery } fro
 
 const D = Prisma.Decimal;
 const TOP_N = 5;
+const MS_PER_DAY = 86_400_000;
 
 @Injectable()
 export class CertificatesService {
@@ -81,7 +82,7 @@ export class CertificatesService {
     for (const o of selected) {
       byMerchantSum.set(o.merchant_id, (byMerchantSum.get(o.merchant_id) ?? new D(0)).plus(o.installments_sum));
     }
-    const concentration_top = Array.from(byMerchantSum.entries())
+    const concentrationTop = Array.from(byMerchantSum.entries())
       .sort((a, b) => b[1].comparedTo(a[1]))
       .slice(0, TOP_N)
       .map(([merchant_id, amount]) => {
@@ -100,7 +101,7 @@ export class CertificatesService {
     let maxPlazo = 0;
     const issueTime = input.issue_date.getTime();
     for (const o of selected) {
-      const days = Math.round((o.max_due_date.getTime() - issueTime) / 86400_000);
+      const days = Math.round((o.max_due_date.getTime() - issueTime) / MS_PER_DAY);
       if (days < minPlazo) minPlazo = days;
       if (days > maxPlazo) maxPlazo = days;
     }
@@ -163,7 +164,7 @@ export class CertificatesService {
       })),
       total_eligible_merchants: merchantIds.length,
       installment_plazo_days: { min: minPlazo, max: maxPlazo },
-      concentration_top,
+      concentration_top: concentrationTop,
       total_distinct_merchants: new Set(selected.map((o) => o.merchant_id)).size,
       due_date_distribution,
       payload_hash,
