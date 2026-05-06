@@ -20,6 +20,11 @@ import type { CertificateSimulate, CertificateIssue, CertificatesListQuery } fro
 const D = Prisma.Decimal;
 const TOP_N = 5;
 const MS_PER_DAY = 86_400_000;
+const CERTIFICATE_SORT_MAP = {
+  issue_date_desc: [{ issue_date: 'desc' as const }],
+  issue_date_asc: [{ issue_date: 'asc' as const }],
+  code_asc: [{ certificate_code: 'asc' as const }],
+};
 
 @Injectable()
 export class CertificatesService {
@@ -365,12 +370,6 @@ export class CertificatesService {
   }
 
   async list(query: CertificatesListQuery) {
-    const SORT_MAP = {
-      issue_date_desc: [{ issue_date: 'desc' as const }],
-      issue_date_asc: [{ issue_date: 'asc' as const }],
-      code_asc: [{ certificate_code: 'asc' as const }],
-    };
-
     const where: Prisma.CertificateWhereInput = { deleted_at: null };
     if (query.status) where.status = query.status;
     if (query.certificate_type) where.certificate_type = query.certificate_type;
@@ -388,7 +387,7 @@ export class CertificatesService {
       this.prisma.certificate.findMany({
         where,
         include: { investor: true, issued_by: true },
-        orderBy: SORT_MAP[query.sort],
+        orderBy: CERTIFICATE_SORT_MAP[query.sort],
         take: query.limit,
         skip: query.offset,
       }),

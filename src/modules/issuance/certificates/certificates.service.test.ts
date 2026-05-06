@@ -451,10 +451,22 @@ describe('CertificatesService.detail', () => {
     expect(r.events[0]!.event_type).toBe('created');
   });
 
-  it('throws 404 when not found or deleted', async () => {
+  it('throws 404 when not found', async () => {
     const prisma = makePrismaForListDetail();
     (prisma.certificate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     const svc = new CertificatesService(prisma, makeAudit());
     await expect(svc.detail('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('throws 404 when soft-deleted (deleted_at IS NOT NULL)', async () => {
+    const prisma = makePrismaForListDetail();
+    (prisma.certificate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...fakeCertRow(),
+      deleted_at: new Date('2026-04-30T00:00:00Z'),
+      certificate_orders: [],
+      certificate_events: [],
+    });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.detail('cert-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
