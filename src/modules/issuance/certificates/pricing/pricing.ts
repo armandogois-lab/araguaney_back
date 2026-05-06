@@ -27,12 +27,14 @@ export type Payouts = {
   shortfallPct: Prisma.Decimal;
 };
 
-export function computePayouts(opts: {
+export type PayoutsInputs = {
   capital: Prisma.Decimal;
   price: Prisma.Decimal;
   nominalTarget: Prisma.Decimal;
   nominalActual: Prisma.Decimal;
-}): Payouts {
+};
+
+export function computePayouts(opts: PayoutsInputs): Payouts {
   const investorPaid = opts.nominalActual.mul(opts.price).toDecimalPlaces(4, D.ROUND_HALF_UP);
   const investorReturned = opts.capital.minus(investorPaid);
   const investorYield = opts.nominalActual.minus(investorPaid);

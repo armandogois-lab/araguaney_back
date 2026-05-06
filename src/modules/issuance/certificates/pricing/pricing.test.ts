@@ -58,4 +58,14 @@ describe('computePayouts', () => {
     });
     expect(r.shortfallPct.toFixed(6)).toBe('0.000000');
   });
+
+  it('shortfall_pct returns 0 when nominalTarget is zero (no divide-by-zero)', () => {
+    const r = computePayouts({
+      capital: new Prisma.Decimal('0'),
+      price: new Prisma.Decimal('1'),
+      nominalTarget: new Prisma.Decimal('0'),
+      nominalActual: new Prisma.Decimal('0'),
+    });
+    expect(r.shortfallPct.toFixed(6)).toBe('0.000000');
+  });
 });
