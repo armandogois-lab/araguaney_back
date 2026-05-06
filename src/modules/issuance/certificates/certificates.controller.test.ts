@@ -21,11 +21,12 @@ describe('CertificatesController', () => {
     issue: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
     detail: ReturnType<typeof vi.fn>;
+    cancel: ReturnType<typeof vi.fn>;
   };
   let prismaPerms: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    svc = { simulate: vi.fn(), issue: vi.fn(), list: vi.fn(), detail: vi.fn() };
+    svc = { simulate: vi.fn(), issue: vi.fn(), list: vi.fn(), detail: vi.fn(), cancel: vi.fn() };
     prismaPerms = vi
       .fn()
       .mockResolvedValue([
@@ -189,5 +190,64 @@ describe('CertificatesController', () => {
       .get('/api/certificates/00000000-0000-4000-8000-000000000099')
       .set('Authorization', `Bearer ${t}`)
       .expect(404);
+  });
+
+  it('POST /api/certificates/:id/cancel → 401 without token', async () => {
+    await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/cancel')
+      .send({ reason: 'Some reason for cancel' })
+      .expect(401);
+  });
+
+  it('POST /api/certificates/:id/cancel → 403 when role lacks certificate.cancel', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.read' } }]);
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/cancel')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ reason: 'Some reason for cancel' })
+      .expect(403);
+  });
+
+  it('POST /api/certificates/:id/cancel → 200 happy', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.cancel' } }]);
+    svc.cancel.mockResolvedValueOnce({
+      id: 'cert-1',
+      certificate_code: 'C4572A',
+      status: 'cancelled',
+      cancelled_at: '2026-05-06T12:00:00.000Z',
+      released_order_count: 2,
+    });
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    const res = await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/cancel')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ reason: 'Operator entered wrong rate' })
+      .expect(200);
+    expect(res.body.status).toBe('cancelled');
+    expect(res.body.released_order_count).toBe(2);
+  });
+
+  it('POST /api/certificates/:id/cancel → 400 when reason is too short (Zod)', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.cancel' } }]);
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/cancel')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ reason: 'no' })
+      .expect(400);
+  });
+
+  it('GET /api/certificates passes callerRole to the service', async () => {
+    svc.list.mockResolvedValueOnce({ data: [], total: 0, limit: 50, offset: 0 });
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .get('/api/certificates?include_deleted=true')
+      .set('Authorization', `Bearer ${t}`)
+      .expect(200);
+    expect(svc.list).toHaveBeenCalledOnce();
+    const callArgs = svc.list.mock.calls[0]!;
+    expect(callArgs[0]).toMatchObject({ include_deleted: true });
+    expect(callArgs[1]).toBe('operator');
   });
 });

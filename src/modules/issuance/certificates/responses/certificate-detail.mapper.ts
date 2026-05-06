@@ -4,6 +4,9 @@ import { toCertificateSummary, type CertificateSummaryRow } from './certificate-
 export type CertificateDetailRow = CertificateSummaryRow & {
   investor_returned: Decimal;
   payload_hash: string;
+  deleted_at: Date | null;
+  deleted_reason: string | null;
+  deleted_by: { id: string; email: string; full_name: string } | null;
   certificate_orders: Array<{
     order: {
       id: string;
@@ -35,6 +38,19 @@ export function toCertificateDetail(c: CertificateDetailRow) {
     ...toCertificateSummary(c),
     investor_returned: c.investor_returned.toFixed(4),
     payload_hash: c.payload_hash,
+    cancellation: c.deleted_at
+      ? {
+          cancelled_at: c.deleted_at.toISOString(),
+          cancelled_by: c.deleted_by
+            ? {
+                id: c.deleted_by.id,
+                email: c.deleted_by.email,
+                full_name: c.deleted_by.full_name,
+              }
+            : null,
+          reason: c.deleted_reason,
+        }
+      : null,
     orders: c.certificate_orders.map((co) => ({
       id: co.order.id,
       external_order_id: co.order.external_order_id,

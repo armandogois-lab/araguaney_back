@@ -570,6 +570,9 @@ function makePrismaForListDetail() {
       count: vi.fn().mockResolvedValue(0),
       findUnique: vi.fn(),
     },
+    rolePermission: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'rp-1' }),
+    },
   } as unknown as PrismaService;
 }
 
@@ -608,7 +611,10 @@ describe('CertificatesService.list', () => {
     ]);
     (prisma.certificate.count as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1);
     const svc = new CertificatesService(prisma, makeAudit());
-    const r = await svc.list({ limit: 50, offset: 0, sort: 'issue_date_desc' });
+    const r = await svc.list(
+      { limit: 50, offset: 0, sort: 'issue_date_desc', include_deleted: false },
+      'admin',
+    );
     expect(r.total).toBe(1);
     expect(r.data[0]!.certificate_code).toBe('C4572A');
     expect(r.data[0]!.investor_capital).toBe('100000.0000');
@@ -654,7 +660,7 @@ describe('CertificatesService.detail', () => {
       ],
     });
     const svc = new CertificatesService(prisma, makeAudit());
-    const r = await svc.detail('cert-1');
+    const r = await svc.detail('cert-1', 'admin');
     expect(r.orders).toHaveLength(1);
     expect(r.orders[0]!.installments).toHaveLength(1);
     expect(r.events[0]!.event_type).toBe('created');
@@ -664,10 +670,10 @@ describe('CertificatesService.detail', () => {
     const prisma = makePrismaForListDetail();
     (prisma.certificate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.detail('missing')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.detail('missing', 'admin')).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('throws 404 when soft-deleted (deleted_at IS NOT NULL)', async () => {
+  it('throws 404 when soft-deleted and role lacks read_deleted', async () => {
     const prisma = makePrismaForListDetail();
     (prisma.certificate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ...fakeCertRow(),
@@ -675,7 +681,224 @@ describe('CertificatesService.detail', () => {
       certificate_orders: [],
       certificate_events: [],
     });
+    (prisma.rolePermission.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.detail('cert-1')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.detail('cert-1', 'operator')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+function makePrismaForCancel(
+  opts: {
+    cert?: {
+      id: string;
+      certificate_code: string;
+      status: string;
+      certificate_type: string;
+      deleted_at: Date | null;
+    } | null;
+    certOrders?: Array<{ id: string; order_id: string }>;
+  } = {},
+) {
+  const tx = {
+    $queryRaw: vi.fn().mockImplementation(async (template: unknown) => {
+      const sql = Array.isArray((template as { strings?: string[] }).strings)
+        ? (template as { strings: string[] }).strings.join('?')
+        : Array.isArray(template)
+          ? (template as string[]).join('?')
+          : String(template);
+      if (sql.includes('FROM cfb.certificates') && sql.includes('FOR UPDATE')) {
+        return opts.cert ? [opts.cert] : [];
+      }
+      if (sql.includes('FROM cfb.certificate_orders') && sql.includes('FOR UPDATE')) {
+        return opts.certOrders ?? [];
+      }
+      return [];
+    }),
+    certificate: { update: vi.fn().mockResolvedValue({}) },
+    certificateOrder: {
+      updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }),
+    },
+    order: { updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }) },
+    certificateEvent: { create: vi.fn().mockResolvedValue({ id: 'evt-1' }) },
+  };
+  const prisma = {
+    $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
+    ...tx,
+  } as unknown as PrismaService;
+  (prisma as unknown as { _tx: typeof tx })._tx = tx;
+  return prisma;
+}
+
+describe('CertificatesService.cancel', () => {
+  it('happy path: marks cert cancelled, releases cert_orders, frees orders, inserts event, audits', async () => {
+    const cert = {
+      id: 'cert-1',
+      certificate_code: 'C4572A',
+      status: 'issued',
+      certificate_type: 'standard',
+      deleted_at: null,
+    };
+    const certOrders = [
+      { id: 'co-1', order_id: 'o-a' },
+      { id: 'co-2', order_id: 'o-b' },
+    ];
+    const prisma = makePrismaForCancel({ cert, certOrders });
+    const audit = makeAudit();
+    const svc = new CertificatesService(prisma, audit);
+
+    const r = await svc.cancel('cert-1', 'Operator entered wrong rate', 'actor-1');
+
+    const tx = (
+      prisma as unknown as {
+        _tx: {
+          certificate: { update: ReturnType<typeof vi.fn> };
+          certificateOrder: { updateMany: ReturnType<typeof vi.fn> };
+          order: { updateMany: ReturnType<typeof vi.fn> };
+          certificateEvent: { create: ReturnType<typeof vi.fn> };
+        };
+      }
+    )._tx;
+
+    expect(tx.certificate.update).toHaveBeenCalledOnce();
+    const updateArg = tx.certificate.update.mock.calls[0]![0] as {
+      where: { id: string };
+      data: { status: string; deleted_at: Date; deleted_by_id: string; deleted_reason: string };
+    };
+    expect(updateArg.where.id).toBe('cert-1');
+    expect(updateArg.data.status).toBe('cancelled');
+    expect(updateArg.data.deleted_by_id).toBe('actor-1');
+    expect(updateArg.data.deleted_reason).toBe('Operator entered wrong rate');
+
+    expect(tx.certificateOrder.updateMany).toHaveBeenCalledOnce();
+    const coUpdate = tx.certificateOrder.updateMany.mock.calls[0]![0] as {
+      where: { certificate_id: string; released_at: null };
+      data: { released_at: Date; released_reason: string };
+    };
+    expect(coUpdate.where.certificate_id).toBe('cert-1');
+    expect(coUpdate.data.released_reason).toContain('Operator entered wrong rate');
+
+    expect(tx.order.updateMany).toHaveBeenCalledOnce();
+    const orderUpdate = tx.order.updateMany.mock.calls[0]![0] as {
+      where: { id: { in: string[] } };
+      data: { status: string };
+    };
+    expect(orderUpdate.where.id.in).toEqual(['o-a', 'o-b']);
+    expect(orderUpdate.data.status).toBe('available');
+
+    expect(tx.certificateEvent.create).toHaveBeenCalledOnce();
+    const evtArg = tx.certificateEvent.create.mock.calls[0]![0] as {
+      data: { event_type: string; payload: { reason: string; order_count: number } };
+    };
+    expect(evtArg.data.event_type).toBe('cancelled');
+    expect(evtArg.data.payload.order_count).toBe(2);
+
+    expect(audit.recordChange).toHaveBeenCalledOnce();
+    expect(r).toMatchObject({
+      id: 'cert-1',
+      certificate_code: 'C4572A',
+      status: 'cancelled',
+      released_order_count: 2,
+    });
+    expect(r.cancelled_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('throws 404 when cert id not found', async () => {
+    const prisma = makePrismaForCancel({ cert: null });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.cancel('missing', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('throws 404 when cert is already cancelled (deleted_at IS NOT NULL)', async () => {
+    const cert = {
+      id: 'cert-1',
+      certificate_code: 'C4572A',
+      status: 'cancelled',
+      certificate_type: 'standard',
+      deleted_at: new Date('2026-04-30'),
+    };
+    const prisma = makePrismaForCancel({ cert });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('throws 409 with current_status when cert is matured', async () => {
+    const cert = {
+      id: 'cert-1',
+      certificate_code: 'C4572A',
+      status: 'matured',
+      certificate_type: 'standard',
+      deleted_at: null,
+    };
+    const prisma = makePrismaForCancel({ cert });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+});
+
+describe('CertificatesService.list with hasReadDeleted gate', () => {
+  function makePrismaForListReadDeleted(grantsReadDeleted: boolean) {
+    return {
+      certificate: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      rolePermission: {
+        findFirst: vi.fn().mockResolvedValue(grantsReadDeleted ? { id: 'rp-1' } : null),
+      },
+    } as unknown as PrismaService;
+  }
+
+  it('omits deleted_at filter when include_deleted=true AND role grants certificate.read_deleted', async () => {
+    const prisma = makePrismaForListReadDeleted(true);
+    const svc = new CertificatesService(prisma, makeAudit());
+    await svc.list(
+      { limit: 50, offset: 0, sort: 'issue_date_desc', include_deleted: true },
+      'admin',
+    );
+    const call = (prisma.certificate.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(call.where.deleted_at).toBeUndefined();
+  });
+
+  it('keeps deleted_at: null filter when include_deleted=true BUT role lacks certificate.read_deleted', async () => {
+    const prisma = makePrismaForListReadDeleted(false);
+    const svc = new CertificatesService(prisma, makeAudit());
+    await svc.list(
+      { limit: 50, offset: 0, sort: 'issue_date_desc', include_deleted: true },
+      'operator',
+    );
+    const call = (prisma.certificate.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(call.where.deleted_at).toBeNull();
+  });
+});
+
+describe('CertificatesService.detail with hasReadDeleted gate', () => {
+  function makePrismaForDetailReadDeleted(grantsReadDeleted: boolean, deletedAt: Date | null) {
+    return {
+      certificate: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...fakeCertRow(),
+          deleted_at: deletedAt,
+          deleted_reason: deletedAt ? 'reason' : null,
+          deleted_by: deletedAt ? { id: 'u-1', email: 'a@b.com', full_name: 'Admin' } : null,
+          certificate_orders: [],
+          certificate_events: [],
+        }),
+      },
+      rolePermission: {
+        findFirst: vi.fn().mockResolvedValue(grantsReadDeleted ? { id: 'rp-1' } : null),
+      },
+    } as unknown as PrismaService;
+  }
+
+  it('throws 404 when cert is cancelled and role lacks certificate.read_deleted', async () => {
+    const prisma = makePrismaForDetailReadDeleted(false, new Date('2026-04-30'));
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.detail('cert-1', 'operator')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
