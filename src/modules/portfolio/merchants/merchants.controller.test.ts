@@ -20,15 +20,31 @@ describe('MerchantsController', () => {
 
   beforeEach(async () => {
     svc = { list: vi.fn(), detail: vi.fn() };
-    const config = { get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined) } as unknown as ConfigService;
+    const config = {
+      get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined),
+    } as unknown as ConfigService;
     const moduleRef = await Test.createTestingModule({
       controllers: [MerchantsController],
       providers: [
         { provide: MerchantsService, useValue: svc },
         { provide: ConfigService, useValue: config },
         JwtService,
-        { provide: UserLookupService, useValue: { findByAuthId: vi.fn().mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }) } },
-        { provide: PrismaService, useValue: { rolePermission: { findMany: vi.fn().mockResolvedValue([{ permission: { key: 'portfolio.read' } }]) } } },
+        {
+          provide: UserLookupService,
+          useValue: {
+            findByAuthId: vi
+              .fn()
+              .mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            rolePermission: {
+              findMany: vi.fn().mockResolvedValue([{ permission: { key: 'portfolio.read' } }]),
+            },
+          },
+        },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },
       ],

@@ -23,13 +23,18 @@ describe('MerchantsService.list', () => {
     const prisma = makePrisma();
     (prisma.merchant.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       {
-        id: 'm-1', rif: 'J-12345678-9', current_name: 'Mercantil',
-        first_seen_at: new Date('2026-04-01'), last_seen_at: new Date('2026-05-06'),
+        id: 'm-1',
+        rif: 'J-12345678-9',
+        current_name: 'Mercantil',
+        first_seen_at: new Date('2026-04-01'),
+        last_seen_at: new Date('2026-05-06'),
         _count: { orders: 1 },
       },
     ]);
     (prisma.merchant.count as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1);
-    (prisma.order.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ _sum: { total_amount: new Prisma.Decimal('300.00') } });
+    (prisma.order.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      _sum: { total_amount: new Prisma.Decimal('300.00') },
+    });
 
     const svc = new MerchantsService(prisma);
     const r = await svc.list({ limit: 50, offset: 0, sort: 'name_asc' });
@@ -56,17 +61,27 @@ describe('MerchantsService.detail', () => {
   it('returns merchant with name_history and orders_summary', async () => {
     const prisma = makePrisma();
     (prisma.merchant.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      id: 'm-1', rif: 'J-12345678-9', current_name: 'Mercantil',
-      first_seen_at: new Date('2026-04-01'), last_seen_at: new Date('2026-05-06'),
+      id: 'm-1',
+      rif: 'J-12345678-9',
+      current_name: 'Mercantil',
+      first_seen_at: new Date('2026-04-01'),
+      last_seen_at: new Date('2026-05-06'),
       _count: { orders: 1 },
       merchant_name_history: [
-        { id: 'h-1', name: 'Mercantil', effective_from: new Date('2026-04-01'), effective_to: null },
+        {
+          id: 'h-1',
+          name: 'Mercantil',
+          effective_from: new Date('2026-04-01'),
+          effective_to: null,
+        },
       ],
     });
     (prisma.order.groupBy as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       { status: 'available', _count: { _all: 1 } },
     ]);
-    (prisma.order.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ _sum: { total_amount: new Prisma.Decimal('300.00') } });
+    (prisma.order.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      _sum: { total_amount: new Prisma.Decimal('300.00') },
+    });
 
     const svc = new MerchantsService(prisma);
     const r = await svc.detail('m-1');

@@ -28,10 +28,12 @@ describe('BatchesController', () => {
 
   beforeEach(async () => {
     svc = { upload: vi.fn() };
-    prismaPerms = vi.fn().mockResolvedValue([
-      { permission: { key: 'batch.upload' } },
-      { permission: { key: 'batch.read' } },
-    ]);
+    prismaPerms = vi
+      .fn()
+      .mockResolvedValue([
+        { permission: { key: 'batch.upload' } },
+        { permission: { key: 'batch.read' } },
+      ]);
     prismaBatchFindUnique = vi.fn();
     prismaBatchFindMany = vi.fn().mockResolvedValue([]);
     prismaBatchCount = vi.fn().mockResolvedValue(0);
@@ -39,7 +41,9 @@ describe('BatchesController', () => {
     prismaErrorsCount = vi.fn().mockResolvedValue(0);
 
     lookup = {
-      findByAuthId: vi.fn().mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }),
+      findByAuthId: vi
+        .fn()
+        .mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }),
     };
 
     const config = {
@@ -57,7 +61,11 @@ describe('BatchesController', () => {
           provide: PrismaService,
           useValue: {
             rolePermission: { findMany: prismaPerms },
-            batch: { findUnique: prismaBatchFindUnique, findMany: prismaBatchFindMany, count: prismaBatchCount },
+            batch: {
+              findUnique: prismaBatchFindUnique,
+              findMany: prismaBatchFindMany,
+              count: prismaBatchCount,
+            },
             importError: { findMany: prismaErrorsFindMany, count: prismaErrorsCount },
           },
         },
@@ -89,7 +97,10 @@ describe('BatchesController', () => {
 
   it('POST /api/batches → 401 without Authorization', async () => {
     const buf = await makeXlsx();
-    await request(app.getHttpServer()).post('/api/batches').attach('file', buf, 'a.xlsx').expect(401);
+    await request(app.getHttpServer())
+      .post('/api/batches')
+      .attach('file', buf, 'a.xlsx')
+      .expect(401);
   });
 
   it('POST /api/batches → 403 when role lacks batch.upload', async () => {
@@ -116,7 +127,10 @@ describe('BatchesController', () => {
     await request(app.getHttpServer())
       .post('/api/batches')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', Buffer.from('binary'), { filename: 'a.xls', contentType: 'application/vnd.ms-excel' })
+      .attach('file', Buffer.from('binary'), {
+        filename: 'a.xls',
+        contentType: 'application/vnd.ms-excel',
+      })
       .expect(400);
   });
 
@@ -126,7 +140,10 @@ describe('BatchesController', () => {
     await request(app.getHttpServer())
       .post('/api/batches')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', big, { filename: 'big.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      .attach('file', big, {
+        filename: 'big.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
       .expect(400);
   });
 
@@ -159,11 +176,13 @@ describe('BatchesController', () => {
 
   it('POST /api/batches → 409 when content_hash duplicate (service throws ConflictException)', async () => {
     const { ConflictException } = await import('@nestjs/common');
-    svc.upload.mockRejectedValueOnce(new ConflictException({
-      message: 'Archivo ya fue subido',
-      existing_batch_id: 'prev-batch',
-      existing_excel_upload_id: 'prev-upload',
-    }));
+    svc.upload.mockRejectedValueOnce(
+      new ConflictException({
+        message: 'Archivo ya fue subido',
+        existing_batch_id: 'prev-batch',
+        existing_excel_upload_id: 'prev-upload',
+      }),
+    );
     const token = await mintTestJwt({ sub: 'auth-uuid' });
     const buf = await makeXlsx();
     const res = await request(app.getHttpServer())

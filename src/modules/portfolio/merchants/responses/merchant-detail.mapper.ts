@@ -1,7 +1,12 @@
 import { toMerchantSummary, type MerchantSummaryRow } from './merchant-summary.mapper';
 
 export type MerchantDetailRow = MerchantSummaryRow & {
-  merchant_name_history: Array<{ id: string; name: string; effective_from: Date; effective_to: Date | null }>;
+  merchant_name_history: Array<{
+    id: string;
+    name: string;
+    effective_from: Date;
+    effective_to: Date | null;
+  }>;
   ordersByStatus: Record<string, number>;
 };
 

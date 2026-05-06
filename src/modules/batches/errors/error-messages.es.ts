@@ -1,6 +1,9 @@
 import { ErrorCodes, type ErrorCode } from './error-codes';
 
-export function errorMessageEs(code: ErrorCode, context: Record<string, string | number> = {}): string {
+export function errorMessageEs(
+  code: ErrorCode,
+  context: Record<string, string | number> = {},
+): string {
   switch (code) {
     case ErrorCodes.MISSING_FIELD:
       return `Campo requerido vacío: ${context.field ?? '?'}`;

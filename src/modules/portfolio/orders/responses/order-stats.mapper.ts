@@ -9,7 +9,10 @@ export type StatsGroupRow = {
 const STATUSES = ['available', 'assigned', 'matured', 'defaulted'] as const;
 
 export function toOrderStats(rows: StatsGroupRow[]) {
-  const by_status: Record<string, { count: number; total_amount: string; total_installments_amount: string }> = {};
+  const by_status: Record<
+    string,
+    { count: number; total_amount: string; total_installments_amount: string }
+  > = {};
   for (const s of STATUSES) {
     by_status[s] = { count: 0, total_amount: '0.0000', total_installments_amount: '0.0000' };
   }

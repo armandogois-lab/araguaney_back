@@ -55,7 +55,9 @@ describe('BatchesService.upload', () => {
     storage = makeStorage();
     svc = new BatchesService(prisma, ingestion, storage);
     (prisma.excelUpload.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    (prisma.excelUpload.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'upload-uuid' });
+    (prisma.excelUpload.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'upload-uuid',
+    });
   });
 
   it('happy path: hashes file, uploads to storage, creates rows, returns response', async () => {
@@ -105,7 +107,9 @@ describe('BatchesService.upload', () => {
       actorId: 'user-1',
       externalCode: 'B-CUSTOM-001',
     });
-    const call = (prisma.batch.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { data: { external_code: string } };
+    const call = (prisma.batch.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      data: { external_code: string };
+    };
     expect(call.data.external_code).toBe('B-CUSTOM-001');
   });
 
@@ -117,7 +121,9 @@ describe('BatchesService.upload', () => {
       actorId: 'user-1',
       externalCode: undefined,
     });
-    const call = (prisma.batch.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { data: { external_code: string } };
+    const call = (prisma.batch.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      data: { external_code: string };
+    };
     expect(call.data.external_code).toMatch(/^B-\d{8}-\d{6}$/);
   });
 
@@ -129,8 +135,12 @@ describe('BatchesService.upload', () => {
       actorId: 'user-1',
       externalCode: undefined,
     });
-    const call = (prisma.excelUpload.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { data: { content_hash: string } };
-    expect(call.data.content_hash).toBe('2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
+    const call = (prisma.excelUpload.create as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      data: { content_hash: string };
+    };
+    expect(call.data.content_hash).toBe(
+      '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+    );
   });
 
   it('returns errors_preview from ingestion result', async () => {
@@ -144,8 +154,22 @@ describe('BatchesService.upload', () => {
       decimalSeparatorDetected: 'dot',
       errorsTotal: 2,
       errorsPreview: [
-        { sheetName: 'S1', rowNumber: 2, fieldName: 'rif', errorCode: 'invalid_rif', errorMessage: 'RIF con formato inválido', rawValue: 'foo' },
-        { sheetName: 'S1', rowNumber: 3, fieldName: 'monto de cuota', errorCode: 'invalid_amount', errorMessage: 'Monto inválido: NA', rawValue: 'NA' },
+        {
+          sheetName: 'S1',
+          rowNumber: 2,
+          fieldName: 'rif',
+          errorCode: 'invalid_rif',
+          errorMessage: 'RIF con formato inválido',
+          rawValue: 'foo',
+        },
+        {
+          sheetName: 'S1',
+          rowNumber: 3,
+          fieldName: 'monto de cuota',
+          errorCode: 'invalid_amount',
+          errorMessage: 'Monto inválido: NA',
+          rawValue: 'NA',
+        },
       ],
     });
     const result = await svc.upload({

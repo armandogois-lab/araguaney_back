@@ -7,7 +7,10 @@ describe('PaginationSchema', () => {
   });
 
   it('coerces string numbers from query params', () => {
-    expect(PaginationSchema.parse({ limit: '25', offset: '100' })).toEqual({ limit: 25, offset: 100 });
+    expect(PaginationSchema.parse({ limit: '25', offset: '100' })).toEqual({
+      limit: 25,
+      offset: 100,
+    });
   });
 
   it('rejects limit > 200', () => {

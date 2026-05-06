@@ -7,7 +7,10 @@ import { UserLookupService } from './user-lookup.service';
 import { mintTestJwt } from '../../../test/helpers/jwt.helper';
 import { mockAuthUser } from '../../../test/helpers/auth-user.helper';
 
-function makeCtx(headers: Record<string, unknown>, isPublicMeta = false): {
+function makeCtx(
+  headers: Record<string, unknown>,
+  isPublicMeta = false,
+): {
   ctx: ExecutionContext;
   req: { headers: Record<string, unknown>; user?: unknown };
   reflector: Reflector;
@@ -35,19 +38,31 @@ function makeLookup(impl: (sub: string) => Promise<unknown>): UserLookupService 
 describe('JwtAuthGuard', () => {
   it('returns true and skips checks when @Public() is set', async () => {
     const { ctx, reflector } = makeCtx({}, true);
-    const guard = new JwtAuthGuard(reflector, makeJwt(async () => ({ sub: '' })), makeLookup(async () => null));
+    const guard = new JwtAuthGuard(
+      reflector,
+      makeJwt(async () => ({ sub: '' })),
+      makeLookup(async () => null),
+    );
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
   it('throws 401 when Authorization header is missing', async () => {
     const { ctx, reflector } = makeCtx({});
-    const guard = new JwtAuthGuard(reflector, makeJwt(async () => ({ sub: '' })), makeLookup(async () => null));
+    const guard = new JwtAuthGuard(
+      reflector,
+      makeJwt(async () => ({ sub: '' })),
+      makeLookup(async () => null),
+    );
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('throws 401 when header is not Bearer', async () => {
     const { ctx, reflector } = makeCtx({ authorization: 'Basic xyz' });
-    const guard = new JwtAuthGuard(reflector, makeJwt(async () => ({ sub: '' })), makeLookup(async () => null));
+    const guard = new JwtAuthGuard(
+      reflector,
+      makeJwt(async () => ({ sub: '' })),
+      makeLookup(async () => null),
+    );
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
@@ -56,7 +71,9 @@ describe('JwtAuthGuard', () => {
     const { ctx, reflector } = makeCtx({ authorization: `Bearer ${token}` });
     const guard = new JwtAuthGuard(
       reflector,
-      makeJwt(async () => { throw new UnauthorizedException('Invalid or expired token'); }),
+      makeJwt(async () => {
+        throw new UnauthorizedException('Invalid or expired token');
+      }),
       makeLookup(async () => null),
     );
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);

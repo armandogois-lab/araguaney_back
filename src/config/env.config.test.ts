@@ -20,12 +20,12 @@ describe('envSchema', () => {
   });
 
   it('rejects missing DATABASE_URL', () => {
-    const { DATABASE_URL, ...bad } = valid;
+    const { DATABASE_URL: _DATABASE_URL, ...bad } = valid;
     expect(() => envSchema.parse(bad)).toThrow();
   });
 
   it('rejects missing DIRECT_URL', () => {
-    const { DIRECT_URL, ...bad } = valid;
+    const { DIRECT_URL: _DIRECT_URL, ...bad } = valid;
     expect(() => envSchema.parse(bad)).toThrow();
   });
 

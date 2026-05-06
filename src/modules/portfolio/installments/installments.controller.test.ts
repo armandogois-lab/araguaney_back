@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, beforeEach, afterEach, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -20,15 +20,31 @@ describe('InstallmentsController', () => {
 
   beforeEach(async () => {
     svc = { list: vi.fn() };
-    const config = { get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined) } as unknown as ConfigService;
+    const config = {
+      get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined),
+    } as unknown as ConfigService;
     const moduleRef = await Test.createTestingModule({
       controllers: [InstallmentsController],
       providers: [
         { provide: InstallmentsService, useValue: svc },
         { provide: ConfigService, useValue: config },
         JwtService,
-        { provide: UserLookupService, useValue: { findByAuthId: vi.fn().mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }) } },
-        { provide: PrismaService, useValue: { rolePermission: { findMany: vi.fn().mockResolvedValue([{ permission: { key: 'portfolio.read' } }]) } } },
+        {
+          provide: UserLookupService,
+          useValue: {
+            findByAuthId: vi
+              .fn()
+              .mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            rolePermission: {
+              findMany: vi.fn().mockResolvedValue([{ permission: { key: 'portfolio.read' } }]),
+            },
+          },
+        },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },
       ],

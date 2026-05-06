@@ -10,7 +10,10 @@ export type BatchRow = {
   total_installments_amount: Decimal;
   imported_at: Date | null;
   rejection_reason: string | null;
-  excel_upload: { uploaded_at: Date; uploaded_by: { id: string; email: string; full_name: string } } | null;
+  excel_upload: {
+    uploaded_at: Date;
+    uploaded_by: { id: string; email: string; full_name: string };
+  } | null;
 };
 
 export function toBatchSummary(b: BatchRow) {

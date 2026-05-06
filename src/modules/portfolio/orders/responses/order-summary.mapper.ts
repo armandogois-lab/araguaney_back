@@ -11,7 +11,12 @@ export type OrderSummaryRow = {
   num_installments: number;
   imported_at: Date;
   merchant: { id: string; current_name: string; rif: string };
-  end_user: { id: string; external_hash: string; national_id: string | null; full_name: string | null };
+  end_user: {
+    id: string;
+    external_hash: string;
+    national_id: string | null;
+    full_name: string | null;
+  };
   batches: { id: string; external_code: string };
 };
 

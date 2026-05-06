@@ -37,7 +37,8 @@ describe('JwtService', () => {
 
   it('throws UnauthorizedException when alg is "none"', async () => {
     // jose refuses alg=none entirely; an attacker token with alg=none must not verify
-    await expect(svc.verify('eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1c2VyLTEifQ.'))
-      .rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(svc.verify('eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1c2VyLTEifQ.')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 });

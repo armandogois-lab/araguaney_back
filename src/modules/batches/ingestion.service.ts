@@ -5,12 +5,7 @@ import { ExcelParserService } from './excel-parser.service';
 import { normalizeRif } from './rif-normalizer';
 import { ErrorCodes, type ErrorCode } from './errors/error-codes';
 import { errorMessageEs } from './errors/error-messages.es';
-import type {
-  IngestionResult,
-  ParsedGroup,
-  ParsedRow,
-  ValidationError,
-} from './types';
+import type { IngestionResult, ParsedGroup, ParsedRow, ValidationError } from './types';
 
 const ERROR_PREVIEW_LIMIT = 50;
 const MAX_FIELD_LEN = 255;
@@ -90,7 +85,9 @@ export class IngestionService {
         for (const [orderId, rows] of groupsRaw.entries()) {
           const groupErrors = validateGroup(orderId, rows);
           // MERCHANT_NAME_DRIFT is non-blocking; other errors are fatal for the group
-          const fatalErrors = groupErrors.filter((e) => e.errorCode !== ErrorCodes.MERCHANT_NAME_DRIFT);
+          const fatalErrors = groupErrors.filter(
+            (e) => e.errorCode !== ErrorCodes.MERCHANT_NAME_DRIFT,
+          );
           if (fatalErrors.length > 0) {
             errors.push(...groupErrors);
             continue;
@@ -346,9 +343,7 @@ function validateRow(r: ParsedRow): ValidationError[] {
     } else if (c.field === 'numero de cuota') {
       code = ErrorCodes.INVALID_INSTALLMENT_NUMBER;
     }
-    errors.push(
-      makeError(r, c.field, code, c.rawValue, { field: c.field, value: c.rawValue }),
-    );
+    errors.push(makeError(r, c.field, code, c.rawValue, { field: c.field, value: c.rawValue }));
   }
 
   // Required-field presence check (skip fields that already had a coercion error)
@@ -390,24 +385,18 @@ function validateRow(r: ParsedRow): ValidationError[] {
   }
   if (r.identificadorDeOrden && r.identificadorDeOrden.length > ID_MAX_LEN) {
     errors.push(
-      makeError(
-        r,
-        'identificador de orden',
-        ErrorCodes.FIELD_TOO_LONG,
-        r.identificadorDeOrden,
-        { field: 'identificador de orden', max: ID_MAX_LEN },
-      ),
+      makeError(r, 'identificador de orden', ErrorCodes.FIELD_TOO_LONG, r.identificadorDeOrden, {
+        field: 'identificador de orden',
+        max: ID_MAX_LEN,
+      }),
     );
   }
   if (r.identificadorDeCuota && r.identificadorDeCuota.length > ID_MAX_LEN) {
     errors.push(
-      makeError(
-        r,
-        'identificador de cuota',
-        ErrorCodes.FIELD_TOO_LONG,
-        r.identificadorDeCuota,
-        { field: 'identificador de cuota', max: ID_MAX_LEN },
-      ),
+      makeError(r, 'identificador de cuota', ErrorCodes.FIELD_TOO_LONG, r.identificadorDeCuota, {
+        field: 'identificador de cuota',
+        max: ID_MAX_LEN,
+      }),
     );
   }
 
@@ -432,13 +421,9 @@ function validateRow(r: ParsedRow): ValidationError[] {
   // Amount positivity
   if (r.montoTotalDeLaOrden !== null && parseFloat(r.montoTotalDeLaOrden) <= 0) {
     errors.push(
-      makeError(
-        r,
-        'monto total de la orden',
-        ErrorCodes.INVALID_AMOUNT,
-        r.montoTotalDeLaOrden,
-        { value: r.montoTotalDeLaOrden },
-      ),
+      makeError(r, 'monto total de la orden', ErrorCodes.INVALID_AMOUNT, r.montoTotalDeLaOrden, {
+        value: r.montoTotalDeLaOrden,
+      }),
     );
   }
   if (r.montoDeCuota !== null && parseFloat(r.montoDeCuota) <= 0) {
@@ -554,10 +539,7 @@ function validateGroup(orderId: string, rows: ParsedRow[]): ValidationError[] {
     .filter((n): n is number => n !== null)
     .sort((a, b) => a - b);
   const expected = Array.from({ length: rows.length }, (_, i) => i + 1);
-  if (
-    numbers.length !== rows.length ||
-    JSON.stringify(numbers) !== JSON.stringify(expected)
-  ) {
+  if (numbers.length !== rows.length || JSON.stringify(numbers) !== JSON.stringify(expected)) {
     errors.push(
       makeError(first, 'numero de cuota', ErrorCodes.INSTALLMENT_NUMBERS_NOT_CONTIGUOUS, null),
     );

@@ -74,7 +74,9 @@ describe('OrdersService.list', () => {
     const prisma = makePrisma();
     const svc = new OrdersService(prisma);
     await svc.list({
-      limit: 50, offset: 0, sort: 'purchase_date_desc',
+      limit: 50,
+      offset: 0,
+      sort: 'purchase_date_desc',
       purchase_date_from: new Date('2026-04-01'),
       purchase_date_to: new Date('2026-04-30'),
     });
@@ -92,7 +94,15 @@ describe('OrdersService.detail', () => {
     (prisma.order.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ...fakeRow(),
       installments: [
-        { id: 'i-1', external_installment_id: 'I-1', installment_number: 1, amount: new Prisma.Decimal('75.00'), due_date: new Date('2026-04-15'), status: 'pending', paid_amount: null },
+        {
+          id: 'i-1',
+          external_installment_id: 'I-1',
+          installment_number: 1,
+          amount: new Prisma.Decimal('75.00'),
+          due_date: new Date('2026-04-15'),
+          status: 'pending',
+          paid_amount: null,
+        },
       ],
       order_events: [],
     });
@@ -115,8 +125,22 @@ describe('OrdersService.stats', () => {
   it('aggregates groupBy result with available_capital from available bucket', async () => {
     const prisma = makePrisma();
     (prisma.order.groupBy as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { status: 'available', _count: { _all: 2 }, _sum: { total_amount: new Prisma.Decimal('400.00'), installments_sum: new Prisma.Decimal('400.00') } },
-      { status: 'assigned', _count: { _all: 1 }, _sum: { total_amount: new Prisma.Decimal('100.00'), installments_sum: new Prisma.Decimal('75.00') } },
+      {
+        status: 'available',
+        _count: { _all: 2 },
+        _sum: {
+          total_amount: new Prisma.Decimal('400.00'),
+          installments_sum: new Prisma.Decimal('400.00'),
+        },
+      },
+      {
+        status: 'assigned',
+        _count: { _all: 1 },
+        _sum: {
+          total_amount: new Prisma.Decimal('100.00'),
+          installments_sum: new Prisma.Decimal('75.00'),
+        },
+      },
     ]);
     const svc = new OrdersService(prisma);
     const r = await svc.stats({});
