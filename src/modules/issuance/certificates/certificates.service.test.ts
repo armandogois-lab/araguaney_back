@@ -687,16 +687,18 @@ describe('CertificatesService.detail', () => {
   });
 });
 
-function makePrismaForCancel(opts: {
-  cert?: {
-    id: string;
-    certificate_code: string;
-    status: string;
-    certificate_type: string;
-    deleted_at: Date | null;
-  } | null;
-  certOrders?: Array<{ id: string; order_id: string }>;
-} = {}) {
+function makePrismaForCancel(
+  opts: {
+    cert?: {
+      id: string;
+      certificate_code: string;
+      status: string;
+      certificate_type: string;
+      deleted_at: Date | null;
+    } | null;
+    certOrders?: Array<{ id: string; order_id: string }>;
+  } = {},
+) {
   const tx = {
     $queryRaw: vi.fn().mockImplementation(async (template: unknown) => {
       const sql = Array.isArray((template as { strings?: string[] }).strings)
@@ -713,7 +715,9 @@ function makePrismaForCancel(opts: {
       return [];
     }),
     certificate: { update: vi.fn().mockResolvedValue({}) },
-    certificateOrder: { updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }) },
+    certificateOrder: {
+      updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }),
+    },
     order: { updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }) },
     certificateEvent: { create: vi.fn().mockResolvedValue({ id: 'evt-1' }) },
   };
@@ -801,9 +805,9 @@ describe('CertificatesService.cancel', () => {
   it('throws 404 when cert id not found', async () => {
     const prisma = makePrismaForCancel({ cert: null });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(
-      svc.cancel('missing', 'Reason here', 'actor-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.cancel('missing', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('throws 404 when cert is already cancelled (deleted_at IS NOT NULL)', async () => {
@@ -816,9 +820,9 @@ describe('CertificatesService.cancel', () => {
     };
     const prisma = makePrismaForCancel({ cert });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(
-      svc.cancel('cert-1', 'Reason here', 'actor-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('throws 409 with current_status when cert is matured', async () => {
@@ -831,9 +835,9 @@ describe('CertificatesService.cancel', () => {
     };
     const prisma = makePrismaForCancel({ cert });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(
-      svc.cancel('cert-1', 'Reason here', 'actor-1'),
-    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 });
 
@@ -845,9 +849,7 @@ describe('CertificatesService.list with hasReadDeleted gate', () => {
         count: vi.fn().mockResolvedValue(0),
       },
       rolePermission: {
-        findFirst: vi
-          .fn()
-          .mockResolvedValue(grantsReadDeleted ? { id: 'rp-1' } : null),
+        findFirst: vi.fn().mockResolvedValue(grantsReadDeleted ? { id: 'rp-1' } : null),
       },
     } as unknown as PrismaService;
   }
@@ -883,17 +885,13 @@ describe('CertificatesService.detail with hasReadDeleted gate', () => {
           ...fakeCertRow(),
           deleted_at: deletedAt,
           deleted_reason: deletedAt ? 'reason' : null,
-          deleted_by: deletedAt
-            ? { id: 'u-1', email: 'a@b.com', full_name: 'Admin' }
-            : null,
+          deleted_by: deletedAt ? { id: 'u-1', email: 'a@b.com', full_name: 'Admin' } : null,
           certificate_orders: [],
           certificate_events: [],
         }),
       },
       rolePermission: {
-        findFirst: vi
-          .fn()
-          .mockResolvedValue(grantsReadDeleted ? { id: 'rp-1' } : null),
+        findFirst: vi.fn().mockResolvedValue(grantsReadDeleted ? { id: 'rp-1' } : null),
       },
     } as unknown as PrismaService;
   }

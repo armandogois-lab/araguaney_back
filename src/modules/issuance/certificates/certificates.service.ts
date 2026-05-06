@@ -424,6 +424,7 @@ export class CertificatesService {
       include: {
         investor: true,
         issued_by: true,
+        deleted_by: true,
         certificate_orders: {
           include: {
             order: {
