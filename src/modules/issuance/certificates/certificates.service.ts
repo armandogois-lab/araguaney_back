@@ -121,25 +121,11 @@ export class CertificatesService {
       .map(([k, amount]) => ({ date: new Date(`${k}T00:00:00Z`), amount }));
 
     // Payload hash
-    const payload_hash = computePayloadHash({
-      inputs: {
-        capital: capital.toFixed(4),
-        rate: rate.toFixed(6),
-        term_days: input.term_days,
-        issue_date: input.issue_date.toISOString().slice(0, 10),
-        investor_id: input.investor_id,
-      },
-      outputs: {
-        price: price.toFixed(6),
-        nominal_target: nominalTarget.toFixed(4),
-        nominal_actual: nominalActual.toFixed(4),
-        investor_paid: payouts.investorPaid.toFixed(4),
-        investor_returned: payouts.investorReturned.toFixed(4),
-        investor_yield: payouts.investorYield.toFixed(4),
-        shortfall_pct: payouts.shortfallPct.toFixed(6),
-      },
-      order_ids: selected.map((o) => o.id),
-    });
+    const payload_hash = computePayloadHash(this.buildHashPayload({
+      capital, rate, termDays: input.term_days, issueDate: input.issue_date,
+      investorId: input.investor_id, price, nominalTarget, nominalActual,
+      payouts, selectedOrderIds: selected.map((o) => o.id),
+    }));
 
     return toSimulationResult({
       investor: { id: investor.id, legal_name: investor.legal_name, rif: investor.rif },
@@ -251,25 +237,11 @@ export class CertificatesService {
 
         const payouts = computePayouts({ capital, price, nominalTarget, nominalActual });
 
-        const recomputedHash = computePayloadHash({
-          inputs: {
-            capital: capital.toFixed(4),
-            rate: rate.toFixed(6),
-            term_days: input.term_days,
-            issue_date: input.issue_date.toISOString().slice(0, 10),
-            investor_id: input.investor_id,
-          },
-          outputs: {
-            price: price.toFixed(6),
-            nominal_target: nominalTarget.toFixed(4),
-            nominal_actual: nominalActual.toFixed(4),
-            investor_paid: payouts.investorPaid.toFixed(4),
-            investor_returned: payouts.investorReturned.toFixed(4),
-            investor_yield: payouts.investorYield.toFixed(4),
-            shortfall_pct: payouts.shortfallPct.toFixed(6),
-          },
-          order_ids: selected.map((o) => o.id),
-        });
+        const recomputedHash = computePayloadHash(this.buildHashPayload({
+          capital, rate, termDays: input.term_days, issueDate: input.issue_date,
+          investorId: input.investor_id, price, nominalTarget, nominalActual,
+          payouts, selectedOrderIds: selected.map((o) => o.id),
+        }));
 
         if (recomputedHash !== input.expected_payload_hash) {
           throw new UnprocessableEntityException('Payload mismatch — re-corra /simulate');
@@ -359,6 +331,39 @@ export class CertificatesService {
       { timeout: 30_000 },
     );
   }
+  private buildHashPayload(opts: {
+    capital: Prisma.Decimal;
+    rate: Prisma.Decimal;
+    termDays: 14 | 42;
+    issueDate: Date;
+    investorId: string;
+    price: Prisma.Decimal;
+    nominalTarget: Prisma.Decimal;
+    nominalActual: Prisma.Decimal;
+    payouts: { investorPaid: Prisma.Decimal; investorReturned: Prisma.Decimal; investorYield: Prisma.Decimal; shortfallPct: Prisma.Decimal };
+    selectedOrderIds: string[];
+  }) {
+    return {
+      inputs: {
+        capital: opts.capital.toFixed(4),
+        rate: opts.rate.toFixed(6),
+        term_days: opts.termDays,
+        issue_date: opts.issueDate.toISOString().slice(0, 10),
+        investor_id: opts.investorId,
+      },
+      outputs: {
+        price: opts.price.toFixed(6),
+        nominal_target: opts.nominalTarget.toFixed(4),
+        nominal_actual: opts.nominalActual.toFixed(4),
+        investor_paid: opts.payouts.investorPaid.toFixed(4),
+        investor_returned: opts.payouts.investorReturned.toFixed(4),
+        investor_yield: opts.payouts.investorYield.toFixed(4),
+        shortfall_pct: opts.payouts.shortfallPct.toFixed(6),
+      },
+      order_ids: opts.selectedOrderIds,
+    };
+  }
+
   async list(_query: CertificatesListQuery): Promise<unknown> {
     throw new Error('not implemented');
   }
