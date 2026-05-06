@@ -467,8 +467,8 @@ export class CertificatesService {
           });
         }
 
-        const certOrders = await tx.$queryRaw<Array<{ id: string; order_id: string }>>(
-          Prisma.sql`SELECT id, order_id
+        const certOrders = await tx.$queryRaw<Array<{ order_id: string }>>(
+          Prisma.sql`SELECT order_id
                      FROM cfb.certificate_orders
                      WHERE certificate_id = ${id}::uuid AND released_at IS NULL
                      FOR UPDATE`,
