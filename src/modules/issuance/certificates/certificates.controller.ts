@@ -8,7 +8,6 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -20,9 +19,11 @@ import {
   CertificateSimulateSchema,
   CertificateIssueSchema,
   CertificatesListQuerySchema,
+  CertificateCancelSchema,
   type CertificateSimulate,
   type CertificateIssue,
   type CertificatesListQuery,
+  type CertificateCancel,
 } from './certificates.dto';
 
 @ApiTags('certificates')
@@ -50,8 +51,10 @@ export class CertificatesController {
 
   @Get()
   @RequirePermission('certificate.read')
-  @UsePipes(new ZodValidationPipe(CertificatesListQuerySchema))
-  list(@Query() query: CertificatesListQuery, @CurrentUser() user: AuthUser) {
+  list(
+    @Query(new ZodValidationPipe(CertificatesListQuerySchema)) query: CertificatesListQuery,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.certificates.list(query, user.role);
   }
 
@@ -59,5 +62,16 @@ export class CertificatesController {
   @RequirePermission('certificate.read')
   detail(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.certificates.detail(id, user.role);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('certificate.cancel')
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CertificateCancelSchema)) body: CertificateCancel,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.certificates.cancel(id, body.reason, user.id);
   }
 }
