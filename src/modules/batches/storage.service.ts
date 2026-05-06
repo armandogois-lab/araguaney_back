@@ -17,7 +17,7 @@ export class StorageService {
   }
 
   /** Indirection so tests can replace the storage client without faking createClient. */
-  protected storageFrom(bucket: string) {
+  protected storageFrom(bucket: string): ReturnType<SupabaseClient['storage']['from']> {
     return this.client.storage.from(bucket);
   }
 
