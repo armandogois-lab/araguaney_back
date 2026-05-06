@@ -500,6 +500,44 @@
           }
         ]
       }
+    },
+    "/api/certificates/sweep/simulate": {
+      "post": {
+        "operationId": "SweepController_simulate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "certificates"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/certificates/sweep": {
+      "post": {
+        "operationId": "SweepController_issue",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "certificates"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "info": {
