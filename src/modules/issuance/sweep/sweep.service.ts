@@ -401,7 +401,12 @@ export class SweepService {
 
           return { id: cert.id, certificate_code: certificateCode };
         } catch (e) {
-          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          if (
+            e instanceof Prisma.PrismaClientKnownRequestError &&
+            e.code === 'P2002' &&
+            Array.isArray(e.meta?.target) &&
+            (e.meta.target as string[]).includes('cycle_week')
+          ) {
             throw new ConflictException({
               message: 'Ya existe un sweep para esta semana',
               cycle_week: cycleWeek,
