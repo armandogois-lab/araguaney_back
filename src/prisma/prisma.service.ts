@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  OnModuleDestroy,
-  OnModuleInit,
-  type INestApplication,
-} from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, type INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { Prisma } from '.prisma/client';
 import { Logger } from 'nestjs-pino';
@@ -30,7 +25,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       await this.$connect();
     } catch (err) {
-      this.logger.error({ err }, 'Prisma failed to connect on startup — continuing; health check will report DB as down');
+      this.logger.error(
+        { err },
+        'Prisma failed to connect on startup — continuing; health check will report DB as down',
+      );
     }
   }
 

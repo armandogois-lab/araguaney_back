@@ -4,7 +4,9 @@ import { PaginationSchema } from '../../../common/dto/pagination.schema';
 export const EndUsersListQuerySchema = PaginationSchema.extend({
   q: z.string().min(1).max(100).optional(),
   has_national_id: z.coerce.boolean().optional(),
-  sort: z.enum(['last_seen_desc', 'first_seen_desc', 'external_hash_asc']).default('last_seen_desc'),
+  sort: z
+    .enum(['last_seen_desc', 'first_seen_desc', 'external_hash_asc'])
+    .default('last_seen_desc'),
 });
 
 export const EndUserUpdateSchema = z

@@ -77,11 +77,18 @@ describe('EndUsersService.list', () => {
 
 describe('EndUsersService.detail', () => {
   it('returns user with orders_summary', async () => {
-    const tx = { endUser: { findUnique: vi.fn() }, order: { groupBy: vi.fn(), aggregate: vi.fn() } };
+    const tx = {
+      endUser: { findUnique: vi.fn() },
+      order: { groupBy: vi.fn(), aggregate: vi.fn() },
+    };
     const prisma = makePrismaWithTx(tx);
     (prisma.endUser.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeUser());
-    (prisma.order.groupBy as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ status: 'available', _count: { _all: 1 } }]);
-    (prisma.order.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ _sum: { total_amount: new Prisma.Decimal('300.00') } });
+    (prisma.order.groupBy as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { status: 'available', _count: { _all: 1 } },
+    ]);
+    (prisma.order.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      _sum: { total_amount: new Prisma.Decimal('300.00') },
+    });
     const svc = new EndUsersService(prisma as unknown as PrismaService, makeAudit());
     const r = await svc.detail('u-1');
     expect(r.orders_summary.total_amount).toBe('300.0000');
@@ -100,7 +107,10 @@ describe('EndUsersService.update', () => {
   it('throws 404 when end_user missing', async () => {
     const tx = {
       endUser: { findUnique: vi.fn().mockResolvedValueOnce(null), update: vi.fn() },
-      order: { groupBy: vi.fn().mockResolvedValue([]), aggregate: vi.fn().mockResolvedValue({ _sum: { total_amount: null } }) },
+      order: {
+        groupBy: vi.fn().mockResolvedValue([]),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { total_amount: null } }),
+      },
     };
     const prisma = makePrismaWithTx(tx);
     const audit = makeAudit();
@@ -153,7 +163,10 @@ describe('EndUsersService.update', () => {
     const before = fakeUser({ email: 'x@y.com' });
     const tx = {
       endUser: { findUnique: vi.fn().mockResolvedValueOnce(before), update: vi.fn() },
-      order: { groupBy: vi.fn().mockResolvedValue([]), aggregate: vi.fn().mockResolvedValue({ _sum: { total_amount: null } }) },
+      order: {
+        groupBy: vi.fn().mockResolvedValue([]),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { total_amount: null } }),
+      },
     };
     const prisma = makePrismaWithTx(tx);
     const audit = makeAudit();
@@ -171,7 +184,10 @@ describe('EndUsersService.update', () => {
         findUnique: vi.fn().mockResolvedValueOnce(before),
         update: vi.fn().mockResolvedValueOnce(after),
       },
-      order: { groupBy: vi.fn().mockResolvedValue([]), aggregate: vi.fn().mockResolvedValue({ _sum: { total_amount: null } }) },
+      order: {
+        groupBy: vi.fn().mockResolvedValue([]),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { total_amount: null } }),
+      },
     };
     const prisma = makePrismaWithTx(tx);
     const audit = makeAudit();

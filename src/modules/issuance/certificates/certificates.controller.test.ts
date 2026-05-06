@@ -16,17 +16,26 @@ import { mockAuthUser } from '../../../../test/helpers/auth-user.helper';
 
 describe('CertificatesController', () => {
   let app: INestApplication;
-  let svc: { simulate: ReturnType<typeof vi.fn>; issue: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn>; detail: ReturnType<typeof vi.fn> };
+  let svc: {
+    simulate: ReturnType<typeof vi.fn>;
+    issue: ReturnType<typeof vi.fn>;
+    list: ReturnType<typeof vi.fn>;
+    detail: ReturnType<typeof vi.fn>;
+  };
   let prismaPerms: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     svc = { simulate: vi.fn(), issue: vi.fn(), list: vi.fn(), detail: vi.fn() };
-    prismaPerms = vi.fn().mockResolvedValue([
-      { permission: { key: 'certificate.simulate' } },
-      { permission: { key: 'certificate.issue' } },
-      { permission: { key: 'certificate.read' } },
-    ]);
-    const config = { get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined) } as unknown as ConfigService;
+    prismaPerms = vi
+      .fn()
+      .mockResolvedValue([
+        { permission: { key: 'certificate.simulate' } },
+        { permission: { key: 'certificate.issue' } },
+        { permission: { key: 'certificate.read' } },
+      ]);
+    const config = {
+      get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined),
+    } as unknown as ConfigService;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [CertificatesController],
@@ -34,7 +43,14 @@ describe('CertificatesController', () => {
         { provide: CertificatesService, useValue: svc },
         { provide: ConfigService, useValue: config },
         JwtService,
-        { provide: UserLookupService, useValue: { findByAuthId: vi.fn().mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }) } },
+        {
+          provide: UserLookupService,
+          useValue: {
+            findByAuthId: vi
+              .fn()
+              .mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }),
+          },
+        },
         { provide: PrismaService, useValue: { rolePermission: { findMany: prismaPerms } } },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },
@@ -65,17 +81,32 @@ describe('CertificatesController', () => {
     await request(app.getHttpServer())
       .post('/api/certificates/simulate')
       .set('Authorization', `Bearer ${t}`)
-      .send({ investor_id: '00000000-0000-4000-8000-000000000001', capital: 100, rate: 0.13, term_days: 42, issue_date: futureDate() })
+      .send({
+        investor_id: '00000000-0000-4000-8000-000000000001',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: futureDate(),
+      })
       .expect(403);
   });
 
   it('POST /api/certificates/simulate → 200 happy', async () => {
-    svc.simulate.mockResolvedValueOnce({ rules_check: { maturity_boundary: true, order_indivisibility: true, round_down: true }, payload_hash: 'a'.repeat(64) });
+    svc.simulate.mockResolvedValueOnce({
+      rules_check: { maturity_boundary: true, order_indivisibility: true, round_down: true },
+      payload_hash: 'a'.repeat(64),
+    });
     const t = await mintTestJwt({ sub: 'auth-uuid' });
     const res = await request(app.getHttpServer())
       .post('/api/certificates/simulate')
       .set('Authorization', `Bearer ${t}`)
-      .send({ investor_id: '00000000-0000-4000-8000-000000000001', capital: 100, rate: 0.13, term_days: 42, issue_date: futureDate() })
+      .send({
+        investor_id: '00000000-0000-4000-8000-000000000001',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: futureDate(),
+      })
       .expect(200);
     expect(res.body.payload_hash).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -91,7 +122,10 @@ describe('CertificatesController', () => {
       .post('/api/certificates')
       .set('Authorization', `Bearer ${t}`)
       .send({
-        investor_id: '00000000-0000-4000-8000-000000000001', capital: 100, rate: 0.13, term_days: 42,
+        investor_id: '00000000-0000-4000-8000-000000000001',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
         issue_date: futureDate(),
         order_ids: ['00000000-0000-4000-8000-000000000010'],
         expected_payload_hash: 'a'.repeat(64),
@@ -106,7 +140,10 @@ describe('CertificatesController', () => {
       .post('/api/certificates')
       .set('Authorization', `Bearer ${t}`)
       .send({
-        investor_id: '00000000-0000-4000-8000-000000000001', capital: 100, rate: 0.13, term_days: 42,
+        investor_id: '00000000-0000-4000-8000-000000000001',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
         issue_date: futureDate(),
         order_ids: ['00000000-0000-4000-8000-000000000010'],
         expected_payload_hash: 'a'.repeat(64),
@@ -116,13 +153,18 @@ describe('CertificatesController', () => {
   });
 
   it('POST /api/certificates → 409 when service throws ConflictException', async () => {
-    svc.issue.mockRejectedValueOnce(new ConflictException({ message: 'Orden(es) ya asignada(s)', conflicting_order_ids: ['x'] }));
+    svc.issue.mockRejectedValueOnce(
+      new ConflictException({ message: 'Orden(es) ya asignada(s)', conflicting_order_ids: ['x'] }),
+    );
     const t = await mintTestJwt({ sub: 'auth-uuid' });
     const res = await request(app.getHttpServer())
       .post('/api/certificates')
       .set('Authorization', `Bearer ${t}`)
       .send({
-        investor_id: '00000000-0000-4000-8000-000000000001', capital: 100, rate: 0.13, term_days: 42,
+        investor_id: '00000000-0000-4000-8000-000000000001',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
         issue_date: futureDate(),
         order_ids: ['00000000-0000-4000-8000-000000000010'],
         expected_payload_hash: 'a'.repeat(64),

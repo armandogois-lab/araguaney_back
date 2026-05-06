@@ -30,8 +30,14 @@ describe('InvestorsService.list', () => {
     const prisma = makePrisma();
     (prisma.investor.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       {
-        id: 'i-1', legal_name: 'Inversora Alpha', rif: 'J-12345678-9',
-        kind: 'juridica', status: 'active', email: null, phone: null, notes: null,
+        id: 'i-1',
+        legal_name: 'Inversora Alpha',
+        rif: 'J-12345678-9',
+        kind: 'juridica',
+        status: 'active',
+        email: null,
+        phone: null,
+        notes: null,
         created_at: new Date('2026-04-15'),
       },
     ]);
@@ -66,8 +72,14 @@ describe('InvestorsService.detail', () => {
   it('returns mapped investor', async () => {
     const prisma = makePrisma();
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      id: 'i-1', legal_name: 'Inversora Alpha', rif: 'J-12345678-9',
-      kind: 'juridica', status: 'active', email: null, phone: null, notes: null,
+      id: 'i-1',
+      legal_name: 'Inversora Alpha',
+      rif: 'J-12345678-9',
+      kind: 'juridica',
+      status: 'active',
+      email: null,
+      phone: null,
+      notes: null,
       created_at: new Date('2026-04-15'),
     });
     (prisma.certificate.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -93,8 +105,14 @@ describe('InvestorsService.create', () => {
     const prisma = makePrisma();
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     (prisma.investor.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      id: 'i-2', legal_name: 'Nueva Inversora', rif: 'J-30123456-7',
-      kind: 'juridica', status: 'active', email: null, phone: null, notes: null,
+      id: 'i-2',
+      legal_name: 'Nueva Inversora',
+      rif: 'J-30123456-7',
+      kind: 'juridica',
+      status: 'active',
+      email: null,
+      phone: null,
+      notes: null,
       created_at: new Date(),
     });
     const audit = makeAudit();

@@ -40,7 +40,9 @@ describe('InstallmentsService.list', () => {
     const prisma = makePrisma();
     const svc = new InstallmentsService(prisma);
     await svc.list({
-      limit: 50, offset: 0, sort: 'due_date_asc',
+      limit: 50,
+      offset: 0,
+      sort: 'due_date_asc',
       status: 'pending',
       due_date_from: new Date('2026-04-01'),
       due_date_to: new Date('2026-05-01'),

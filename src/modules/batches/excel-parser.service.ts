@@ -18,12 +18,7 @@ const REQUIRED_HEADERS_NORMALIZED = [
 type FieldName = (typeof REQUIRED_HEADERS_NORMALIZED)[number];
 
 function normalizeHeader(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, ' ');
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
 function parseDateCell(value: unknown): Date | null {

@@ -61,7 +61,11 @@ export class EndUsersService {
     if (!u) throw new NotFoundException('End user no encontrado');
 
     const [statuses, agg] = await Promise.all([
-      this.prisma.order.groupBy({ by: ['status'], where: { end_user_id: id }, _count: { _all: true } }),
+      this.prisma.order.groupBy({
+        by: ['status'],
+        where: { end_user_id: id },
+        _count: { _all: true },
+      }),
       this.prisma.order.aggregate({ where: { end_user_id: id }, _sum: { total_amount: true } }),
     ]);
     const ordersByStatus: Record<string, number> = {};

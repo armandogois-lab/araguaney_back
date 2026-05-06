@@ -42,10 +42,7 @@ describe('fillPool', () => {
   });
 
   it('tie-breaks equal installments_sum by external_order_id ASC', () => {
-    const r = fillPool(
-      [order('id-1', '50', 'ORD-Z'), order('id-2', '50', 'ORD-A')],
-      D('200'),
-    );
+    const r = fillPool([order('id-1', '50', 'ORD-Z'), order('id-2', '50', 'ORD-A')], D('200'));
     expect(r.selected.map((o) => o.external_order_id)).toEqual(['ORD-A', 'ORD-Z']);
   });
 

@@ -18,7 +18,9 @@ const SORT_MAP = {
  * expects `batches` (the field name used in early mapper design). We remap here
  * so the mapper stays stable and the DB query uses the correct relation name.
  */
-function normalizeBatch<T extends { batch?: unknown; batches?: unknown }>(row: T): Omit<T, 'batch'> & { batches: unknown } {
+function normalizeBatch<T extends { batch?: unknown; batches?: unknown }>(
+  row: T,
+): Omit<T, 'batch'> & { batches: unknown } {
   const { batch, ...rest } = row as T & { batch?: unknown };
   return { ...rest, batches: batch ?? (row as T & { batches?: unknown }).batches };
 }
@@ -85,8 +87,10 @@ export class OrdersService {
     if (q.batch_id) where.batch_id = q.batch_id;
     if (q.purchase_date_from || q.purchase_date_to) {
       where.purchase_date = {};
-      if (q.purchase_date_from) (where.purchase_date as Record<string, Date>).gte = q.purchase_date_from;
-      if (q.purchase_date_to) (where.purchase_date as Record<string, Date>).lte = q.purchase_date_to;
+      if (q.purchase_date_from)
+        (where.purchase_date as Record<string, Date>).gte = q.purchase_date_from;
+      if (q.purchase_date_to)
+        (where.purchase_date as Record<string, Date>).lte = q.purchase_date_to;
     }
     if (q.max_due_date_lte) where.max_due_date = { lte: q.max_due_date_lte };
     return where;

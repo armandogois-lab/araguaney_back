@@ -22,7 +22,8 @@ describe('StorageService.uploadExcel', () => {
   it('uploads a buffer to excel-uploads bucket and returns the path', async () => {
     const upload = vi.fn().mockResolvedValue({ data: { path: 'xyz.xlsx' }, error: null });
     const svc = new StorageService(makeConfig());
-    (svc as unknown as { storageFrom: (b: string) => { upload: typeof upload } }).storageFrom = () => ({ upload });
+    (svc as unknown as { storageFrom: (b: string) => { upload: typeof upload } }).storageFrom =
+      () => ({ upload });
 
     const path = await svc.uploadExcel(Buffer.from('contents'), 'abc.xlsx');
     expect(path).toBe('abc.xlsx');
@@ -35,16 +36,21 @@ describe('StorageService.uploadExcel', () => {
   it('throws when upload returns error', async () => {
     const upload = vi.fn().mockResolvedValue({ data: null, error: { message: 'Bucket missing' } });
     const svc = new StorageService(makeConfig());
-    (svc as unknown as { storageFrom: (b: string) => { upload: typeof upload } }).storageFrom = () => ({ upload });
+    (svc as unknown as { storageFrom: (b: string) => { upload: typeof upload } }).storageFrom =
+      () => ({ upload });
 
-    await expect(svc.uploadExcel(Buffer.from('x'), 'a.xlsx')).rejects.toThrow(/storage upload failed.*Bucket missing/i);
+    await expect(svc.uploadExcel(Buffer.from('x'), 'a.xlsx')).rejects.toThrow(
+      /storage upload failed.*Bucket missing/i,
+    );
   });
 
   it('uses configured bucket name', async () => {
     const upload = vi.fn().mockResolvedValue({ data: { path: 'p.xlsx' }, error: null });
     const fromCalls: string[] = [];
     const svc = new StorageService(makeConfig());
-    (svc as unknown as { storageFrom: (b: string) => { upload: typeof upload } }).storageFrom = (b: string) => {
+    (svc as unknown as { storageFrom: (b: string) => { upload: typeof upload } }).storageFrom = (
+      b: string,
+    ) => {
       fromCalls.push(b);
       return { upload };
     };

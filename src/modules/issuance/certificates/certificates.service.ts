@@ -13,9 +13,19 @@ import { fillPool, type EligibleOrder } from './pool-builder/pool-builder';
 import { computePayloadHash } from './payload-hash/payload-hash';
 import { isoWeek } from './helpers/iso-week';
 import { toSimulationResult } from './responses/simulation-result.mapper';
-import { toCertificateSummary, type CertificateSummaryRow } from './responses/certificate-summary.mapper';
-import { toCertificateDetail, type CertificateDetailRow } from './responses/certificate-detail.mapper';
-import type { CertificateSimulate, CertificateIssue, CertificatesListQuery } from './certificates.dto';
+import {
+  toCertificateSummary,
+  type CertificateSummaryRow,
+} from './responses/certificate-summary.mapper';
+import {
+  toCertificateDetail,
+  type CertificateDetailRow,
+} from './responses/certificate-detail.mapper';
+import type {
+  CertificateSimulate,
+  CertificateIssue,
+  CertificatesListQuery,
+} from './certificates.dto';
 
 const D = Prisma.Decimal;
 const TOP_N = 5;
@@ -53,8 +63,12 @@ export class CertificatesService {
     const eligible = await this.prisma.order.findMany({
       where: { status: 'available', max_due_date: { lte: maturityDate } },
       select: {
-        id: true, external_order_id: true, installments_sum: true,
-        merchant_id: true, num_installments: true, max_due_date: true,
+        id: true,
+        external_order_id: true,
+        installments_sum: true,
+        merchant_id: true,
+        num_installments: true,
+        max_due_date: true,
         purchase_date: true,
       },
     });
@@ -85,7 +99,10 @@ export class CertificatesService {
     // Concentration aggregation
     const byMerchantSum = new Map<string, Prisma.Decimal>();
     for (const o of selected) {
-      byMerchantSum.set(o.merchant_id, (byMerchantSum.get(o.merchant_id) ?? new D(0)).plus(o.installments_sum));
+      byMerchantSum.set(
+        o.merchant_id,
+        (byMerchantSum.get(o.merchant_id) ?? new D(0)).plus(o.installments_sum),
+      );
     }
     const concentrationTop = Array.from(byMerchantSum.entries())
       .sort((a, b) => b[1].comparedTo(a[1]))
@@ -97,7 +114,9 @@ export class CertificatesService {
           current_name: m.current_name,
           rif: m.rif,
           amount,
-          pct: nominalActual.isZero() ? new D(0) : amount.div(nominalActual).toDecimalPlaces(6, D.ROUND_HALF_UP),
+          pct: nominalActual.isZero()
+            ? new D(0)
+            : amount.div(nominalActual).toDecimalPlaces(6, D.ROUND_HALF_UP),
         };
       });
 
@@ -126,11 +145,20 @@ export class CertificatesService {
       .map(([k, amount]) => ({ date: new Date(`${k}T00:00:00Z`), amount }));
 
     // Payload hash
-    const payload_hash = computePayloadHash(this.buildHashPayload({
-      capital, rate, termDays: input.term_days, issueDate: input.issue_date,
-      investorId: input.investor_id, price, nominalTarget, nominalActual,
-      payouts, selectedOrderIds: selected.map((o) => o.id),
-    }));
+    const payload_hash = computePayloadHash(
+      this.buildHashPayload({
+        capital,
+        rate,
+        termDays: input.term_days,
+        issueDate: input.issue_date,
+        investorId: input.investor_id,
+        price,
+        nominalTarget,
+        nominalActual,
+        payouts,
+        selectedOrderIds: selected.map((o) => o.id),
+      }),
+    );
 
     return toSimulationResult({
       investor: { id: investor.id, legal_name: investor.legal_name, rif: investor.rif },
@@ -176,7 +204,11 @@ export class CertificatesService {
 
         const capital = new D(input.capital);
         const rate = new D(input.rate);
-        const { price, nominalTarget } = computePricing({ capital, rate, termDays: input.term_days });
+        const { price, nominalTarget } = computePricing({
+          capital,
+          rate,
+          termDays: input.term_days,
+        });
         const maturityDate = new Date(input.issue_date);
         maturityDate.setUTCDate(maturityDate.getUTCDate() + input.term_days);
 
@@ -242,11 +274,20 @@ export class CertificatesService {
 
         const payouts = computePayouts({ capital, price, nominalTarget, nominalActual });
 
-        const recomputedHash = computePayloadHash(this.buildHashPayload({
-          capital, rate, termDays: input.term_days, issueDate: input.issue_date,
-          investorId: input.investor_id, price, nominalTarget, nominalActual,
-          payouts, selectedOrderIds: selected.map((o) => o.id),
-        }));
+        const recomputedHash = computePayloadHash(
+          this.buildHashPayload({
+            capital,
+            rate,
+            termDays: input.term_days,
+            issueDate: input.issue_date,
+            investorId: input.investor_id,
+            price,
+            nominalTarget,
+            nominalActual,
+            payouts,
+            selectedOrderIds: selected.map((o) => o.id),
+          }),
+        );
 
         if (recomputedHash !== input.expected_payload_hash) {
           throw new UnprocessableEntityException('Payload mismatch — re-corra /simulate');
@@ -345,7 +386,12 @@ export class CertificatesService {
     price: Prisma.Decimal;
     nominalTarget: Prisma.Decimal;
     nominalActual: Prisma.Decimal;
-    payouts: { investorPaid: Prisma.Decimal; investorReturned: Prisma.Decimal; investorYield: Prisma.Decimal; shortfallPct: Prisma.Decimal };
+    payouts: {
+      investorPaid: Prisma.Decimal;
+      investorReturned: Prisma.Decimal;
+      investorYield: Prisma.Decimal;
+      shortfallPct: Prisma.Decimal;
+    };
     selectedOrderIds: string[];
   }) {
     return {
@@ -376,7 +422,8 @@ export class CertificatesService {
     if (query.investor_id) where.investor_id = query.investor_id;
     if (query.issue_date_from || query.issue_date_to) {
       where.issue_date = {};
-      if (query.issue_date_from) (where.issue_date as Record<string, Date>).gte = query.issue_date_from;
+      if (query.issue_date_from)
+        (where.issue_date as Record<string, Date>).gte = query.issue_date_from;
       if (query.issue_date_to) (where.issue_date as Record<string, Date>).lte = query.issue_date_to;
     }
     if (query.q) {

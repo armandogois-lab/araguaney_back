@@ -5,7 +5,10 @@ import { PermissionsGuard } from './permissions.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { mockAuthUser } from '../../../test/helpers/auth-user.helper';
 
-function makeCtx(metadata: string[] | undefined, user: unknown): {
+function makeCtx(
+  metadata: string[] | undefined,
+  user: unknown,
+): {
   ctx: ExecutionContext;
   reflector: Reflector;
 } {
@@ -36,13 +39,22 @@ describe('PermissionsGuard', () => {
   });
 
   it('returns true when user has all required permissions', async () => {
-    const { ctx, reflector } = makeCtx(['certificate.issue', 'certificate.read'], mockAuthUser({ role: 'admin' }));
-    const guard = new PermissionsGuard(reflector, makePrisma(['certificate.issue', 'certificate.read']));
+    const { ctx, reflector } = makeCtx(
+      ['certificate.issue', 'certificate.read'],
+      mockAuthUser({ role: 'admin' }),
+    );
+    const guard = new PermissionsGuard(
+      reflector,
+      makePrisma(['certificate.issue', 'certificate.read']),
+    );
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
   it('throws 403 listing missing keys when one is missing', async () => {
-    const { ctx, reflector } = makeCtx(['certificate.issue', 'certificate.cancel'], mockAuthUser({ role: 'operator' }));
+    const { ctx, reflector } = makeCtx(
+      ['certificate.issue', 'certificate.cancel'],
+      mockAuthUser({ role: 'operator' }),
+    );
     const guard = new PermissionsGuard(reflector, makePrisma(['certificate.issue']));
     await expect(guard.canActivate(ctx)).rejects.toMatchObject({
       response: expect.objectContaining({ message: 'Permission denied: certificate.cancel' }),

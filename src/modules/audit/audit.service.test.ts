@@ -31,7 +31,9 @@ describe('AuditService.recordChange', () => {
     const globalCreate = vi.fn();
     const txCreate = vi.fn().mockResolvedValue({ id: 'audit-2' });
     const prisma = { auditLog: { create: globalCreate } } as unknown as PrismaService;
-    const tx = { auditLog: { create: txCreate } } as unknown as Parameters<AuditService['recordChange']>[0]['tx'];
+    const tx = { auditLog: { create: txCreate } } as unknown as Parameters<
+      AuditService['recordChange']
+    >[0]['tx'];
     const svc = new AuditService(prisma);
 
     await svc.recordChange({

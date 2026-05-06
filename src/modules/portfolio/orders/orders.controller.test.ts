@@ -16,16 +16,26 @@ import { mockAuthUser } from '../../../../test/helpers/auth-user.helper';
 
 describe('OrdersController', () => {
   let app: INestApplication;
-  let svc: { list: ReturnType<typeof vi.fn>; detail: ReturnType<typeof vi.fn>; stats: ReturnType<typeof vi.fn> };
+  let svc: {
+    list: ReturnType<typeof vi.fn>;
+    detail: ReturnType<typeof vi.fn>;
+    stats: ReturnType<typeof vi.fn>;
+  };
   let prismaPerms: ReturnType<typeof vi.fn>;
   let lookup: { findByAuthId: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     svc = { list: vi.fn(), detail: vi.fn(), stats: vi.fn() };
     prismaPerms = vi.fn().mockResolvedValue([{ permission: { key: 'portfolio.read' } }]);
-    lookup = { findByAuthId: vi.fn().mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }) };
+    lookup = {
+      findByAuthId: vi
+        .fn()
+        .mockResolvedValue({ kind: 'found', user: mockAuthUser({ role: 'operator' }) }),
+    };
 
-    const config = { get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined) } as unknown as ConfigService;
+    const config = {
+      get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined),
+    } as unknown as ConfigService;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [OrdersController],

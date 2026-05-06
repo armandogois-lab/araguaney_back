@@ -4,21 +4,19 @@ import { buildWorkbook, STANDARD_HEADERS } from '../../../test/helpers/xlsx.help
 
 const svc = new ExcelParserService();
 
-function validRow(
-  overrides: Record<number, unknown> = {},
-): Array<string | number | Date | null> {
+function validRow(overrides: Record<number, unknown> = {}): Array<string | number | Date | null> {
   // Returns a row matching STANDARD_HEADERS order.
   const base: Array<string | number | Date | null> = [
-    new Date('2026-05-01'),     // Fecha de Compra
-    'user-hash-1',              // Usuario
-    'J-12345678-9',             // Rif
-    'Mercantil C.A.',           // Razón Social
-    'ORD-001',                  // Identificador de Orden
-    1,                          // Número de Cuota
-    '300.00',                   // Monto Total de la Orden
-    'INST-001-1',               // Identificador de Cuota
-    '75.00',                    // Monto de Cuota
-    new Date('2026-05-15'),     // Vencimiento Cuota
+    new Date('2026-05-01'), // Fecha de Compra
+    'user-hash-1', // Usuario
+    'J-12345678-9', // Rif
+    'Mercantil C.A.', // Razón Social
+    'ORD-001', // Identificador de Orden
+    1, // Número de Cuota
+    '300.00', // Monto Total de la Orden
+    'INST-001-1', // Identificador de Cuota
+    '75.00', // Monto de Cuota
+    new Date('2026-05-15'), // Vencimiento Cuota
   ];
   for (const [i, v] of Object.entries(overrides)) {
     base[Number(i)] = v as string | number | Date | null;
@@ -114,7 +112,13 @@ describe('ExcelParserService.parse', () => {
   describe('decimal separator heuristic', () => {
     it('detects dot when amounts use dot decimal', async () => {
       const buf = await buildWorkbook({
-        sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 6: '1234.56', 8: '300.00' })] }],
+        sheets: [
+          {
+            name: 'S1',
+            headers: [...STANDARD_HEADERS],
+            rows: [validRow({ 6: '1234.56', 8: '300.00' })],
+          },
+        ],
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
@@ -129,10 +133,7 @@ describe('ExcelParserService.parse', () => {
           {
             name: 'S1',
             headers: [...STANDARD_HEADERS],
-            rows: [
-              validRow({ 6: '1234,56', 8: '300,00' }),
-              validRow({ 6: '999,99', 8: '100,50' }),
-            ],
+            rows: [validRow({ 6: '1234,56', 8: '300,00' }), validRow({ 6: '999,99', 8: '100,50' })],
           },
         ],
       });
@@ -147,7 +148,13 @@ describe('ExcelParserService.parse', () => {
   describe('date parsing', () => {
     it('parses Excel-native Date cells', async () => {
       const buf = await buildWorkbook({
-        sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: new Date('2026-05-01') })] }],
+        sheets: [
+          {
+            name: 'S1',
+            headers: [...STANDARD_HEADERS],
+            rows: [validRow({ 0: new Date('2026-05-01') })],
+          },
+        ],
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
@@ -157,7 +164,9 @@ describe('ExcelParserService.parse', () => {
 
     it('parses ISO YYYY-MM-DD strings', async () => {
       const buf = await buildWorkbook({
-        sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: '2026-05-01' })] }],
+        sheets: [
+          { name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: '2026-05-01' })] },
+        ],
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
@@ -167,7 +176,9 @@ describe('ExcelParserService.parse', () => {
 
     it('parses DD/MM/YYYY strings', async () => {
       const buf = await buildWorkbook({
-        sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: '01/05/2026' })] }],
+        sheets: [
+          { name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: '01/05/2026' })] },
+        ],
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
@@ -177,7 +188,9 @@ describe('ExcelParserService.parse', () => {
 
     it('flags coercionError for unparseable date', async () => {
       const buf = await buildWorkbook({
-        sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: 'not a date' })] }],
+        sheets: [
+          { name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow({ 0: 'not a date' })] },
+        ],
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
@@ -239,7 +252,13 @@ describe('ExcelParserService.parse', () => {
   describe('row numbering', () => {
     it('sets rowNumber starting at 2 (header is row 1)', async () => {
       const buf = await buildWorkbook({
-        sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [validRow(), validRow(), validRow()] }],
+        sheets: [
+          {
+            name: 'S1',
+            headers: [...STANDARD_HEADERS],
+            rows: [validRow(), validRow(), validRow()],
+          },
+        ],
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
@@ -256,7 +275,11 @@ describe('ExcelParserService.parse', () => {
       });
       const r = await svc.parse(buf);
       if (r.kind === 'parsed') {
-        expect(r.rows.map((x) => `${x.sheetName}:${x.rowNumber}`)).toEqual(['S1:2', 'S2:2', 'S2:3']);
+        expect(r.rows.map((x) => `${x.sheetName}:${x.rowNumber}`)).toEqual([
+          'S1:2',
+          'S2:2',
+          'S2:3',
+        ]);
       }
     });
   });

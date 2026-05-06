@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { CertificatesService } from './certificates.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -9,8 +14,11 @@ const D = (s: string) => new Prisma.Decimal(s);
 
 function fakeInvestor(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'inv-1', legal_name: 'Inversora Alpha', rif: 'J-12345678-9',
-    kind: 'juridica', status: 'active',
+    id: 'inv-1',
+    legal_name: 'Inversora Alpha',
+    rif: 'J-12345678-9',
+    kind: 'juridica',
+    status: 'active',
     ...overrides,
   };
 }
@@ -64,11 +72,18 @@ describe('CertificatesService.simulate', () => {
 
     const svc = new CertificatesService(prisma, makeAudit());
     const r = await svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
       issue_date: new Date('2026-05-15'),
     });
 
-    expect(r.rules_check).toEqual({ maturity_boundary: true, order_indivisibility: true, round_down: true });
+    expect(r.rules_check).toEqual({
+      maturity_boundary: true,
+      order_indivisibility: true,
+      round_down: true,
+    });
     expect(r.pool.order_count).toBe(2);
     expect(r.payouts.nominal_actual).toBe('100.0000');
     expect(r.payload_hash).toMatch(/^[a-f0-9]{64}$/);
@@ -78,30 +93,49 @@ describe('CertificatesService.simulate', () => {
     const prisma = makePrismaForSimulate();
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.simulate({
-      investor_id: 'missing', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-    })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      svc.simulate({
+        investor_id: 'missing',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('throws 400 when investor.kind=internal', async () => {
     const prisma = makePrismaForSimulate();
-    (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor({ kind: 'internal' }));
+    (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      fakeInvestor({ kind: 'internal' }),
+    );
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      svc.simulate({
+        investor_id: 'inv-1',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('throws 400 when investor.status=inactive', async () => {
     const prisma = makePrismaForSimulate();
-    (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor({ status: 'inactive' }));
+    (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      fakeInvestor({ status: 'inactive' }),
+    );
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      svc.simulate({
+        investor_id: 'inv-1',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('throws 422 when no eligible orders fit', async () => {
@@ -109,17 +143,26 @@ describe('CertificatesService.simulate', () => {
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor());
     (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-    })).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(
+      svc.simulate({
+        investor_id: 'inv-1',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+      }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
   it('payload_hash is deterministic across two simulate calls with same inputs', async () => {
     const prisma = makePrismaForSimulate();
     const setup = () => {
-      (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor());
-      (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([fakeOrder('a', '60', 7)]);
+      (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        fakeInvestor(),
+      );
+      (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        fakeOrder('a', '60', 7),
+      ]);
       (prisma.merchant.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
         { id: 'merch-a', current_name: 'A', rif: 'J-1' },
       ]);
@@ -130,12 +173,18 @@ describe('CertificatesService.simulate', () => {
     const svc = new CertificatesService(prisma, makeAudit());
     setup();
     const r1 = await svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
       issue_date: new Date('2026-05-15'),
     });
     setup();
     const r2 = await svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
       issue_date: new Date('2026-05-15'),
     });
     expect(r1.payload_hash).toBe(r2.payload_hash);
@@ -155,7 +204,10 @@ describe('CertificatesService.simulate', () => {
     (prisma.installment.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
     const svc = new CertificatesService(prisma, makeAudit());
     const r = await svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
       issue_date: new Date('2026-05-15'),
     });
     expect(r.concentration.total_distinct_merchants).toBe(2);
@@ -164,11 +216,20 @@ describe('CertificatesService.simulate', () => {
   });
 });
 
-function makePrismaForIssue(opts: {
-  investor?: Record<string, unknown> | null;
-  lockedOrders?: Array<{ id: string; installments_sum: Prisma.Decimal; max_due_date: Date; merchant_id: string; status: string; external_order_id?: string }>;
-  certificateCode?: string;
-} = {}) {
+function makePrismaForIssue(
+  opts: {
+    investor?: Record<string, unknown> | null;
+    lockedOrders?: Array<{
+      id: string;
+      installments_sum: Prisma.Decimal;
+      max_due_date: Date;
+      merchant_id: string;
+      status: string;
+      external_order_id?: string;
+    }>;
+    certificateCode?: string;
+  } = {},
+) {
   const tx = {
     $queryRaw: vi.fn().mockImplementation(async (arg: unknown) => {
       // Prisma.sql`...` returns a Sql object with a `.strings` array; tagged-template
@@ -206,10 +267,13 @@ function makePrismaForIssue(opts: {
     installment: { findMany: vi.fn().mockResolvedValue([]) },
     certificate: {
       create: vi.fn().mockImplementation(async ({ data }: { data: unknown }) => ({
-        id: 'cert-1', ...(data as object),
+        id: 'cert-1',
+        ...(data as object),
       })),
     },
-    certificateOrder: { createMany: vi.fn().mockResolvedValue({ count: opts.lockedOrders?.length ?? 0 }) },
+    certificateOrder: {
+      createMany: vi.fn().mockResolvedValue({ count: opts.lockedOrders?.length ?? 0 }),
+    },
     certificateEvent: { create: vi.fn().mockResolvedValue({ id: 'evt-1' }) },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'audit-1' }) },
   };
@@ -224,8 +288,20 @@ function makePrismaForIssue(opts: {
 describe('CertificatesService.issue', () => {
   it('happy path: locks orders, inserts cert+orders+events, updates orders, records audit', async () => {
     const lockedOrders = [
-      { id: 'o-a', installments_sum: D('60'), max_due_date: new Date('2026-05-22'), merchant_id: 'm-a', status: 'available' },
-      { id: 'o-b', installments_sum: D('40'), max_due_date: new Date('2026-05-29'), merchant_id: 'm-b', status: 'available' },
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+      },
+      {
+        id: 'o-b',
+        installments_sum: D('40'),
+        max_due_date: new Date('2026-05-29'),
+        merchant_id: 'm-b',
+        status: 'available',
+      },
     ];
     const prisma = makePrismaForIssue({ lockedOrders });
 
@@ -234,27 +310,51 @@ describe('CertificatesService.issue', () => {
     // Pre-run simulate to get expected_payload_hash
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor());
     (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      lockedOrders.map((o) => ({ ...o, external_order_id: `ORD-${o.id}`, num_installments: 3, purchase_date: new Date('2026-04-01') })),
+      lockedOrders.map((o) => ({
+        ...o,
+        external_order_id: `ORD-${o.id}`,
+        num_installments: 3,
+        purchase_date: new Date('2026-04-01'),
+      })),
     );
     (prisma.merchant.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { id: 'm-a', current_name: 'A', rif: 'J-1' }, { id: 'm-b', current_name: 'B', rif: 'J-2' },
+      { id: 'm-a', current_name: 'A', rif: 'J-1' },
+      { id: 'm-b', current_name: 'B', rif: 'J-2' },
     ]);
     (prisma.installment.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
     const sim = await svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
       issue_date: new Date('2026-05-15'),
     });
     const expectedHash = sim.payload_hash;
     const orderIds = sim.pool.order_ids;
 
-    const result = await svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: orderIds,
-      expected_payload_hash: expectedHash,
-    }, 'actor-1');
+    const result = await svc.issue(
+      {
+        investor_id: 'inv-1',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+        order_ids: orderIds,
+        expected_payload_hash: expectedHash,
+      },
+      'actor-1',
+    );
 
-    const tx = (prisma as unknown as { _tx: { certificate: { create: ReturnType<typeof vi.fn> }; certificateOrder: { createMany: ReturnType<typeof vi.fn> }; order: { updateMany: ReturnType<typeof vi.fn> }; certificateEvent: { create: ReturnType<typeof vi.fn> } } })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: {
+          certificate: { create: ReturnType<typeof vi.fn> };
+          certificateOrder: { createMany: ReturnType<typeof vi.fn> };
+          order: { updateMany: ReturnType<typeof vi.fn> };
+          certificateEvent: { create: ReturnType<typeof vi.fn> };
+        };
+      }
+    )._tx;
     expect(tx.certificate.create).toHaveBeenCalledOnce();
     expect(tx.certificateOrder.createMany).toHaveBeenCalledOnce();
     expect(tx.order.updateMany).toHaveBeenCalledOnce();
@@ -265,74 +365,144 @@ describe('CertificatesService.issue', () => {
 
   it('throws 409 when one of the locked orders has status != available', async () => {
     const lockedOrders = [
-      { id: 'o-a', installments_sum: D('60'), max_due_date: new Date('2026-05-22'), merchant_id: 'm-a', status: 'assigned' },
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'assigned',
+      },
     ];
     const prisma = makePrismaForIssue({ lockedOrders });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: ['o-a'],
-      expected_payload_hash: 'a'.repeat(64),
-    }, 'actor-1')).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      svc.issue(
+        {
+          investor_id: 'inv-1',
+          capital: 100,
+          rate: 0.13,
+          term_days: 42,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'],
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('throws 409 when one of the order_ids does not exist', async () => {
     const prisma = makePrismaForIssue({ lockedOrders: [] });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: ['ghost'],
-      expected_payload_hash: 'a'.repeat(64),
-    }, 'actor-1')).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      svc.issue(
+        {
+          investor_id: 'inv-1',
+          capital: 100,
+          rate: 0.13,
+          term_days: 42,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['ghost'],
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('throws 422 when expected_payload_hash does not match recomputed', async () => {
     const lockedOrders = [
-      { id: 'o-a', installments_sum: D('60'), max_due_date: new Date('2026-05-22'), merchant_id: 'm-a', status: 'available' },
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+      },
     ];
     const prisma = makePrismaForIssue({ lockedOrders });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: ['o-a'],
-      expected_payload_hash: 'b'.repeat(64),
-    }, 'actor-1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(
+      svc.issue(
+        {
+          investor_id: 'inv-1',
+          capital: 100,
+          rate: 0.13,
+          term_days: 42,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'],
+          expected_payload_hash: 'b'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
   it('throws 422 when client order_ids do not match recomputed pool', async () => {
     const lockedOrders = [
-      { id: 'o-a', installments_sum: D('500'), max_due_date: new Date('2026-05-22'), merchant_id: 'm-a', status: 'available' },
+      {
+        id: 'o-a',
+        installments_sum: D('500'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+      },
     ];
     const prisma = makePrismaForIssue({ lockedOrders });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: ['o-a'],   // 500 > target ~101.54 → recomputed pool would be empty, mismatch
-      expected_payload_hash: 'a'.repeat(64),
-    }, 'actor-1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(
+      svc.issue(
+        {
+          investor_id: 'inv-1',
+          capital: 100,
+          rate: 0.13,
+          term_days: 42,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'], // 500 > target ~101.54 → recomputed pool would be empty, mismatch
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
   it('throws 422 when MAX(max_due_date) > maturity_date', async () => {
     const lockedOrders = [
-      { id: 'o-a', installments_sum: D('60'), max_due_date: new Date('2027-12-31'), merchant_id: 'm-a', status: 'available' },
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2027-12-31'),
+        merchant_id: 'm-a',
+        status: 'available',
+      },
     ];
     const prisma = makePrismaForIssue({ lockedOrders });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: ['o-a'],
-      expected_payload_hash: 'a'.repeat(64),
-    }, 'actor-1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(
+      svc.issue(
+        {
+          investor_id: 'inv-1',
+          capital: 100,
+          rate: 0.13,
+          term_days: 42,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'],
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
   it('inserts certificate_event with event_type=created and updates orders to assigned', async () => {
     const lockedOrders = [
-      { id: 'o-a', installments_sum: D('60'), max_due_date: new Date('2026-05-22'), merchant_id: 'm-a', status: 'available' },
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+      },
     ];
     const prisma = makePrismaForIssue({ lockedOrders });
     const audit = makeAudit();
@@ -340,28 +510,54 @@ describe('CertificatesService.issue', () => {
     // Pre-simulate to get hash
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor());
     (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      lockedOrders.map((o) => ({ ...o, external_order_id: `ORD-${o.id}`, num_installments: 3, purchase_date: new Date('2026-04-01') })),
+      lockedOrders.map((o) => ({
+        ...o,
+        external_order_id: `ORD-${o.id}`,
+        num_installments: 3,
+        purchase_date: new Date('2026-04-01'),
+      })),
     );
     (prisma.merchant.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       { id: 'm-a', current_name: 'A', rif: 'J-1' },
     ]);
     (prisma.installment.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
     const sim = await svc.simulate({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
       issue_date: new Date('2026-05-15'),
     });
 
-    await svc.issue({
-      investor_id: 'inv-1', capital: 100, rate: 0.13, term_days: 42,
-      issue_date: new Date('2026-05-15'),
-      order_ids: sim.pool.order_ids,
-      expected_payload_hash: sim.payload_hash,
-    }, 'actor-1');
+    await svc.issue(
+      {
+        investor_id: 'inv-1',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+        order_ids: sim.pool.order_ids,
+        expected_payload_hash: sim.payload_hash,
+      },
+      'actor-1',
+    );
 
-    const tx = (prisma as unknown as { _tx: { certificateEvent: { create: ReturnType<typeof vi.fn> }; order: { updateMany: ReturnType<typeof vi.fn> } } })._tx;
-    const evtCall = tx.certificateEvent.create.mock.calls[0]![0] as { data: { event_type: string; payload: unknown } };
+    const tx = (
+      prisma as unknown as {
+        _tx: {
+          certificateEvent: { create: ReturnType<typeof vi.fn> };
+          order: { updateMany: ReturnType<typeof vi.fn> };
+        };
+      }
+    )._tx;
+    const evtCall = tx.certificateEvent.create.mock.calls[0]![0] as {
+      data: { event_type: string; payload: unknown };
+    };
     expect(evtCall.data.event_type).toBe('created');
-    const updCall = tx.order.updateMany.mock.calls[0]![0] as { where: { id: { in: string[] } }; data: { status: string } };
+    const updCall = tx.order.updateMany.mock.calls[0]![0] as {
+      where: { id: { in: string[] } };
+      data: { status: string };
+    };
     expect(updCall.data.status).toBe('assigned');
     expect(updCall.where.id.in).toEqual(['o-a']);
   });
@@ -407,7 +603,9 @@ function fakeCertRow(): Record<string, unknown> {
 describe('CertificatesService.list', () => {
   it('returns paginated mapped certificates filtering deleted_at IS NULL', async () => {
     const prisma = makePrismaForListDetail();
-    (prisma.certificate.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([fakeCertRow()]);
+    (prisma.certificate.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      fakeCertRow(),
+    ]);
     (prisma.certificate.count as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1);
     const svc = new CertificatesService(prisma, makeAudit());
     const r = await svc.list({ limit: 50, offset: 0, sort: 'issue_date_desc' });
@@ -435,13 +633,24 @@ describe('CertificatesService.detail', () => {
             purchase_date: new Date('2026-04-01'),
             max_due_date: new Date('2026-05-15'),
             installments: [
-              { installment_number: 1, amount: D('100'), due_date: new Date('2026-05-01'), status: 'pending' },
+              {
+                installment_number: 1,
+                amount: D('100'),
+                due_date: new Date('2026-05-01'),
+                status: 'pending',
+              },
             ],
           },
         },
       ],
       certificate_events: [
-        { id: 'evt-1', event_type: 'created', occurred_at: new Date(), payload: {}, actor_id: 'a-1' },
+        {
+          id: 'evt-1',
+          event_type: 'created',
+          occurred_at: new Date(),
+          payload: {},
+          actor_id: 'a-1',
+        },
       ],
     });
     const svc = new CertificatesService(prisma, makeAudit());

@@ -28,8 +28,7 @@ import type { EnvConfig } from '../../config/env.config';
               ],
               censor: '[REDACTED]',
             },
-            genReqId: (req) =>
-              ((req.headers['x-request-id'] as string | undefined) ?? randomUUID()),
+            genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
           },
         };
       },

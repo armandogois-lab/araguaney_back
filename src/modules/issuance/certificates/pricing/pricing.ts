@@ -40,7 +40,9 @@ export function computePayouts(opts: PayoutsInputs): Payouts {
   const investorYield = opts.nominalActual.minus(investorPaid);
   const shortfallPct = opts.nominalTarget.isZero()
     ? new D(0)
-    : opts.nominalTarget.minus(opts.nominalActual).div(opts.nominalTarget)
+    : opts.nominalTarget
+        .minus(opts.nominalActual)
+        .div(opts.nominalTarget)
         .toDecimalPlaces(6, D.ROUND_HALF_UP);
   return { investorPaid, investorReturned, investorYield, shortfallPct };
 }

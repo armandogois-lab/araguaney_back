@@ -57,7 +57,11 @@ export class MerchantsService {
     if (!m) throw new NotFoundException('Comercio no encontrado');
 
     const [statuses, agg] = await Promise.all([
-      this.prisma.order.groupBy({ by: ['status'], where: { merchant_id: id }, _count: { _all: true } }),
+      this.prisma.order.groupBy({
+        by: ['status'],
+        where: { merchant_id: id },
+        _count: { _all: true },
+      }),
       this.prisma.order.aggregate({ where: { merchant_id: id }, _sum: { total_amount: true } }),
     ]);
     const ordersByStatus: Record<string, number> = {};
