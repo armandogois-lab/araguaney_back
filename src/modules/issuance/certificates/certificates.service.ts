@@ -171,9 +171,193 @@ export class CertificatesService {
     });
   }
 
-  // issue, list, detail filled in next tasks
-  async issue(_input: CertificateIssue, _actorId: string): Promise<unknown> {
-    throw new Error('not implemented');
+  async issue(input: CertificateIssue, actorId: string) {
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const investor = await tx.investor.findUnique({ where: { id: input.investor_id } });
+        if (!investor) throw new NotFoundException('Inversor no encontrado');
+        if (investor.kind === 'internal') {
+          throw new BadRequestException('Inversor interno reservado para certificados sweep');
+        }
+        if (investor.status !== 'active') {
+          throw new BadRequestException('Inversor inactivo');
+        }
+
+        const capital = new D(input.capital);
+        const rate = new D(input.rate);
+        const { price, nominalTarget } = computePricing({ capital, rate, termDays: input.term_days });
+        const maturityDate = new Date(input.issue_date);
+        maturityDate.setUTCDate(maturityDate.getUTCDate() + input.term_days);
+
+        const lockedOrders = await tx.$queryRaw<
+          Array<{
+            id: string;
+            external_order_id: string;
+            installments_sum: Prisma.Decimal;
+            max_due_date: Date;
+            merchant_id: string;
+            status: string;
+          }>
+        >(
+          Prisma.sql`SELECT id, external_order_id, installments_sum, max_due_date, merchant_id, status
+                     FROM cfb.orders
+                     WHERE id = ANY(${input.order_ids}::uuid[])
+                     FOR UPDATE`,
+        );
+
+        if (lockedOrders.length !== input.order_ids.length) {
+          throw new ConflictException({
+            message: 'Una o más órdenes no existen',
+            missing_count: input.order_ids.length - lockedOrders.length,
+          });
+        }
+
+        const conflicting = lockedOrders.filter((o) => o.status !== 'available');
+        if (conflicting.length > 0) {
+          throw new ConflictException({
+            message: 'Orden(es) ya asignada(s) a otro certificado',
+            conflicting_order_ids: conflicting.map((o) => o.id),
+          });
+        }
+
+        const maxDue = lockedOrders.reduce(
+          (m, o) => (o.max_due_date > m ? o.max_due_date : m),
+          new Date(0),
+        );
+        if (maxDue > maturityDate) {
+          throw new UnprocessableEntityException(
+            'Una orden tiene cuotas que vencen después del vencimiento del certificado',
+          );
+        }
+
+        const eligibleForPool: EligibleOrder[] = lockedOrders.map((o) => ({
+          id: o.id,
+          external_order_id: o.external_order_id,
+          installments_sum: o.installments_sum,
+          merchant_id: o.merchant_id,
+          num_installments: 0,
+          max_due_date: o.max_due_date,
+        }));
+        const { selected, nominalActual } = fillPool(eligibleForPool, nominalTarget);
+
+        const recomputedIds = new Set(selected.map((o) => o.id));
+        const clientIds = new Set(input.order_ids);
+        if (
+          recomputedIds.size !== clientIds.size ||
+          ![...recomputedIds].every((id) => clientIds.has(id))
+        ) {
+          throw new UnprocessableEntityException('Pool inválido — re-corra /simulate');
+        }
+
+        const payouts = computePayouts({ capital, price, nominalTarget, nominalActual });
+
+        const recomputedHash = computePayloadHash({
+          inputs: {
+            capital: capital.toFixed(4),
+            rate: rate.toFixed(6),
+            term_days: input.term_days,
+            issue_date: input.issue_date.toISOString().slice(0, 10),
+            investor_id: input.investor_id,
+          },
+          outputs: {
+            price: price.toFixed(6),
+            nominal_target: nominalTarget.toFixed(4),
+            nominal_actual: nominalActual.toFixed(4),
+            investor_paid: payouts.investorPaid.toFixed(4),
+            investor_returned: payouts.investorReturned.toFixed(4),
+            investor_yield: payouts.investorYield.toFixed(4),
+            shortfall_pct: payouts.shortfallPct.toFixed(6),
+          },
+          order_ids: selected.map((o) => o.id),
+        });
+
+        if (recomputedHash !== input.expected_payload_hash) {
+          throw new UnprocessableEntityException('Payload mismatch — re-corra /simulate');
+        }
+
+        const cycleWeek = isoWeek(input.issue_date);
+        const codeRows = await tx.$queryRaw<Array<{ code: string }>>(
+          Prisma.sql`SELECT cfb.next_certificate_code() AS code`,
+        );
+        const certificate_code = codeRows[0]!.code;
+
+        const cert = await tx.certificate.create({
+          data: {
+            certificate_code,
+            certificate_type: 'standard',
+            status: 'issued',
+            investor_id: input.investor_id,
+            investor_capital: capital,
+            annual_rate: rate,
+            rate_basis: 'ACT/360',
+            term_days: input.term_days,
+            price,
+            nominal_target: nominalTarget,
+            nominal_actual: nominalActual,
+            investor_paid: payouts.investorPaid,
+            investor_returned: payouts.investorReturned,
+            investor_yield: payouts.investorYield,
+            shortfall_pct: payouts.shortfallPct,
+            issue_date: input.issue_date,
+            maturity_date: maturityDate,
+            cycle_week: cycleWeek,
+            payload_hash: recomputedHash,
+            issued_by_id: actorId,
+          },
+        });
+
+        await tx.certificateOrder.createMany({
+          data: selected.map((o) => ({
+            certificate_id: cert.id,
+            order_id: o.id,
+            installments_sum_snapshot: o.installments_sum,
+            assigned_by_id: actorId,
+          })),
+        });
+
+        await tx.order.updateMany({
+          where: { id: { in: selected.map((o) => o.id) } },
+          data: { status: 'assigned' },
+        });
+
+        await tx.certificateEvent.create({
+          data: {
+            certificate_id: cert.id,
+            event_type: 'created',
+            payload: {
+              certificate_code,
+              order_count: selected.length,
+              nominal_actual: nominalActual.toFixed(4),
+              investor_paid: payouts.investorPaid.toFixed(4),
+            } as Prisma.InputJsonValue,
+            actor_id: actorId,
+          },
+        });
+
+        await this.audit.recordChange({
+          entityType: 'certificate',
+          entityId: cert.id,
+          action: 'create',
+          actorId,
+          payload: {
+            certificate_code,
+            inputs: {
+              capital: capital.toFixed(4),
+              rate: rate.toFixed(6),
+              term_days: input.term_days,
+              issue_date: input.issue_date.toISOString().slice(0, 10),
+              investor_id: input.investor_id,
+            },
+            order_count: selected.length,
+            payload_hash: recomputedHash,
+          },
+          tx,
+        });
+
+        return { id: cert.id, certificate_code };
+      },
+      { timeout: 30_000 },
+    );
   }
   async list(_query: CertificatesListQuery): Promise<unknown> {
     throw new Error('not implemented');
