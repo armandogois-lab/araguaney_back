@@ -46,4 +46,19 @@ WHERE table_schema = 'cfb'
 ORDER BY table_name;
 ```
 
-Debe devolver 19 tablas.
+Debe devolver 21 tablas (3 ingestión + 7 cartera + 5 emisión + 6 transversal — el "19" del comentario en CLAUDE.md es histórico).
+
+## Setup manual de Supabase Storage (prerequisito de Slice 2+)
+
+CLAUDE.md prohíbe tocar `storage.*` desde migraciones SQL. Antes del primer
+`POST /api/batches`, alguien con acceso al Dashboard de Supabase debe crear:
+
+**Supabase Dashboard → Storage → New bucket**
+
+- Name: `excel-uploads`
+- Public: **OFF**
+- File size limit: 10 MB
+- Allowed MIME types: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+
+Sin policies adicionales: el backend usa `SUPABASE_SERVICE_ROLE_KEY`
+que bypasea las RLS de storage.
