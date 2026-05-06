@@ -26,6 +26,7 @@ import type {
   CertificateIssue,
   CertificatesListQuery,
 } from './certificates.dto';
+import type { AuthUser } from '../../auth/types';
 
 const D = Prisma.Decimal;
 const TOP_N = 5;
@@ -377,8 +378,13 @@ export class CertificatesService {
       { timeout: 30_000 },
     );
   }
-  async list(query: CertificatesListQuery) {
-    const where: Prisma.CertificateWhereInput = { deleted_at: null };
+  async list(query: CertificatesListQuery, callerRole: AuthUser['role']) {
+    const hasReadDeleted = await this.hasReadDeletedPerm(callerRole);
+
+    const where: Prisma.CertificateWhereInput = {};
+    if (!query.include_deleted || !hasReadDeleted) {
+      where.deleted_at = null;
+    }
     if (query.status) where.status = query.status;
     if (query.certificate_type) where.certificate_type = query.certificate_type;
     if (query.investor_id) where.investor_id = query.investor_id;
@@ -411,7 +417,7 @@ export class CertificatesService {
     };
   }
 
-  async detail(id: string) {
+  async detail(id: string, callerRole: AuthUser['role']) {
     const c = await this.prisma.certificate.findUnique({
       where: { id },
       include: {
@@ -431,8 +437,12 @@ export class CertificatesService {
         certificate_events: { orderBy: { occurred_at: 'desc' }, take: 50 },
       },
     });
-    if (!c || c.deleted_at !== null) {
-      throw new NotFoundException('Certificado no encontrado');
+    if (!c) throw new NotFoundException('Certificado no encontrado');
+    if (c.deleted_at !== null) {
+      const hasReadDeleted = await this.hasReadDeletedPerm(callerRole);
+      if (!hasReadDeleted) {
+        throw new NotFoundException('Certificado no encontrado');
+      }
     }
     return toCertificateDetail(c as unknown as CertificateDetailRow);
   }
@@ -538,5 +548,13 @@ export class CertificatesService {
       },
       { timeout: 30_000 },
     );
+  }
+
+  private async hasReadDeletedPerm(role: AuthUser['role']): Promise<boolean> {
+    const grant = await this.prisma.rolePermission.findFirst({
+      where: { role, permission: { key: 'certificate.read_deleted' } },
+      select: { id: true },
+    });
+    return grant !== null;
   }
 }

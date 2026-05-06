@@ -51,13 +51,13 @@ export class CertificatesController {
   @Get()
   @RequirePermission('certificate.read')
   @UsePipes(new ZodValidationPipe(CertificatesListQuerySchema))
-  list(@Query() query: CertificatesListQuery) {
-    return this.certificates.list(query);
+  list(@Query() query: CertificatesListQuery, @CurrentUser() user: AuthUser) {
+    return this.certificates.list(query, user.role);
   }
 
   @Get(':id')
   @RequirePermission('certificate.read')
-  detail(@Param('id', ParseUUIDPipe) id: string) {
-    return this.certificates.detail(id);
+  detail(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.certificates.detail(id, user.role);
   }
 }
