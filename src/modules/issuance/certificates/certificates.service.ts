@@ -436,4 +436,107 @@ export class CertificatesService {
     }
     return toCertificateDetail(c as unknown as CertificateDetailRow);
   }
+
+  async cancel(id: string, reason: string, actorId: string) {
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const lockedCertRows = await tx.$queryRaw<
+          Array<{
+            id: string;
+            certificate_code: string;
+            status: string;
+            certificate_type: string;
+            deleted_at: Date | null;
+          }>
+        >(
+          Prisma.sql`SELECT id, certificate_code, status, certificate_type, deleted_at
+                     FROM cfb.certificates
+                     WHERE id = ${id}::uuid
+                     FOR UPDATE`,
+        );
+
+        if (lockedCertRows.length === 0 || lockedCertRows[0]!.deleted_at !== null) {
+          throw new NotFoundException('Certificado no encontrado');
+        }
+        const cert = lockedCertRows[0]!;
+
+        if (cert.status !== 'issued') {
+          throw new ConflictException({
+            message: 'Solo se pueden cancelar certificados con estado "issued"',
+            current_status: cert.status,
+          });
+        }
+
+        const certOrders = await tx.$queryRaw<Array<{ id: string; order_id: string }>>(
+          Prisma.sql`SELECT id, order_id
+                     FROM cfb.certificate_orders
+                     WHERE certificate_id = ${id}::uuid AND released_at IS NULL
+                     FOR UPDATE`,
+        );
+
+        const now = new Date();
+
+        await tx.certificate.update({
+          where: { id },
+          data: {
+            status: 'cancelled',
+            deleted_at: now,
+            deleted_by_id: actorId,
+            deleted_reason: reason,
+          },
+        });
+
+        await tx.certificateOrder.updateMany({
+          where: { certificate_id: id, released_at: null },
+          data: { released_at: now, released_reason: `cert_cancelled: ${reason}` },
+        });
+
+        const orderIds = certOrders.map((co) => co.order_id);
+        if (orderIds.length > 0) {
+          await tx.order.updateMany({
+            where: { id: { in: orderIds } },
+            data: { status: 'available' },
+          });
+        }
+
+        await tx.certificateEvent.create({
+          data: {
+            certificate_id: id,
+            event_type: 'cancelled',
+            payload: {
+              reason,
+              certificate_type: cert.certificate_type,
+              order_count: orderIds.length,
+              cancelled_at: now.toISOString(),
+            } as Prisma.InputJsonValue,
+            actor_id: actorId,
+          },
+        });
+
+        await this.audit.recordChange({
+          entityType: 'certificate',
+          entityId: id,
+          action: 'cancel',
+          actorId,
+          payload: {
+            certificate_code: cert.certificate_code,
+            certificate_type: cert.certificate_type,
+            reason,
+            order_count: orderIds.length,
+            released_order_ids: orderIds,
+          },
+          tx,
+        });
+
+        return {
+          id,
+          certificate_code: cert.certificate_code,
+          status: 'cancelled' as const,
+          cancelled_at: now.toISOString(),
+          released_order_count: orderIds.length,
+        };
+      },
+      { timeout: 30_000 },
+    );
+  }
 }
