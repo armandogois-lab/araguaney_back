@@ -174,3 +174,262 @@ describe('SweepService.simulateSweep', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+function makePrismaForIssue(
+  opts: {
+    internal?: Record<string, unknown> | null;
+    defaultSweepRate?: Prisma.Decimal;
+    lockedOrders?: Array<{
+      id: string;
+      installments_sum: Prisma.Decimal;
+      max_due_date: Date;
+      merchant_id: string;
+      status: string;
+      external_order_id: string;
+    }>;
+    eligibleNow?: Array<{
+      id: string;
+      external_order_id: string;
+      installments_sum: Prisma.Decimal;
+      merchant_id: string;
+      num_installments: number;
+      max_due_date: Date;
+      purchase_date: Date;
+    }>;
+    certificateCode?: string;
+    certificateCreateError?: Error;
+  } = {},
+) {
+  const tx = {
+    $queryRaw: vi.fn().mockImplementation(async (template: unknown) => {
+      const sql = Array.isArray((template as { strings?: string[] }).strings)
+        ? (template as { strings: string[] }).strings.join('?')
+        : Array.isArray(template)
+          ? (template as string[]).join('?')
+          : String(template);
+      if (sql.includes('FOR UPDATE')) return opts.lockedOrders ?? [];
+      if (sql.includes('next_certificate_code')) {
+        return [{ code: opts.certificateCode ?? 'C9999A' }];
+      }
+      return [];
+    }),
+    investor: {
+      findFirst: vi.fn().mockResolvedValue(opts.internal ?? fakeInternal()),
+    },
+    setting: {
+      findUnique: vi
+        .fn()
+        .mockResolvedValue({ id: 1, default_sweep_rate: opts.defaultSweepRate ?? D('0.08') }),
+    },
+    order: {
+      findMany: vi.fn().mockResolvedValue(opts.eligibleNow ?? []),
+      updateMany: vi.fn().mockResolvedValue({ count: opts.lockedOrders?.length ?? 0 }),
+    },
+    merchant: { findMany: vi.fn().mockResolvedValue([]) },
+    installment: { findMany: vi.fn().mockResolvedValue([]) },
+    certificate: {
+      create: opts.certificateCreateError
+        ? vi.fn().mockRejectedValue(opts.certificateCreateError)
+        : vi.fn().mockImplementation(async ({ data }: { data: unknown }) => ({
+            id: 'cert-sweep-1',
+            ...(data as object),
+          })),
+    },
+    certificateOrder: {
+      createMany: vi.fn().mockResolvedValue({ count: opts.lockedOrders?.length ?? 0 }),
+    },
+    certificateEvent: { create: vi.fn().mockResolvedValue({ id: 'evt-1' }) },
+  };
+  const prisma = {
+    $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
+    ...tx,
+  } as unknown as PrismaService;
+  (prisma as unknown as { _tx: typeof tx })._tx = tx;
+  return prisma;
+}
+
+describe('SweepService.issueSweep', () => {
+  it('happy path: locks orders, inserts sweep cert, updates orders, audits', async () => {
+    const lockedOrders = [
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+        external_order_id: 'ORD-a',
+      },
+      {
+        id: 'o-b',
+        installments_sum: D('40'),
+        max_due_date: new Date('2026-05-29'),
+        merchant_id: 'm-b',
+        status: 'available',
+        external_order_id: 'ORD-b',
+      },
+    ];
+    const eligibleNow = lockedOrders.map((o) => ({
+      ...o,
+      num_installments: 3,
+      purchase_date: new Date('2026-04-01'),
+    }));
+    const prisma = makePrismaForIssue({ lockedOrders, eligibleNow });
+    const audit = makeAudit();
+    const svc = new SweepService(prisma, audit);
+
+    // Pre-run simulate to obtain the deterministic payload_hash.
+    (prisma.investor.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInternal());
+    (prisma.setting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 1,
+      default_sweep_rate: D('0.08'),
+    });
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockReset();
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce(eligibleNow);
+    (prisma.merchant.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: 'm-a', current_name: 'A', rif: 'J-1' },
+      { id: 'm-b', current_name: 'B', rif: 'J-2' },
+    ]);
+    (prisma.installment.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+    const sim = (await svc.simulateSweep({
+      term_days: 14,
+      issue_date: new Date('2026-05-15'),
+    })) as Record<string, Record<string, unknown>>;
+
+    // Re-prime the order.findMany mock for the issue path's eligibleNow re-fetch
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce(eligibleNow);
+
+    const result = await svc.issueSweep(
+      {
+        term_days: 14,
+        issue_date: new Date('2026-05-15'),
+        order_ids: sim.pool!.order_ids as string[],
+        expected_payload_hash: sim.payload_hash as unknown as string,
+      },
+      'actor-1',
+    );
+
+    const tx = (
+      prisma as unknown as {
+        _tx: {
+          certificate: { create: ReturnType<typeof vi.fn> };
+          certificateOrder: { createMany: ReturnType<typeof vi.fn> };
+          order: { updateMany: ReturnType<typeof vi.fn> };
+          certificateEvent: { create: ReturnType<typeof vi.fn> };
+        };
+      }
+    )._tx;
+    expect(tx.certificate.create).toHaveBeenCalledOnce();
+    const createArg = tx.certificate.create.mock.calls[0]![0] as {
+      data: { certificate_type: string; investor_id: string };
+    };
+    expect(createArg.data.certificate_type).toBe('sweep');
+    expect(createArg.data.investor_id).toBe(INTERNAL_ID);
+    expect(tx.certificateOrder.createMany).toHaveBeenCalledOnce();
+    expect(tx.order.updateMany).toHaveBeenCalledOnce();
+    expect(tx.certificateEvent.create).toHaveBeenCalledOnce();
+    expect(audit.recordChange).toHaveBeenCalledOnce();
+    expect((result as { id: string; certificate_code: string }).id).toBe('cert-sweep-1');
+  });
+
+  it('throws 422 when locked set differs from current eligible set', async () => {
+    const lockedOrders = [
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+        external_order_id: 'ORD-a',
+      },
+    ];
+    const eligibleNow = [
+      ...lockedOrders.map((o) => ({
+        ...o,
+        num_installments: 3,
+        purchase_date: new Date('2026-04-01'),
+      })),
+      {
+        id: 'o-new',
+        external_order_id: 'ORD-new',
+        installments_sum: D('25'),
+        merchant_id: 'm-c',
+        num_installments: 2,
+        max_due_date: new Date('2026-05-22'),
+        purchase_date: new Date('2026-05-10'),
+      },
+    ];
+    const prisma = makePrismaForIssue({ lockedOrders, eligibleNow });
+    const svc = new SweepService(prisma, makeAudit());
+    await expect(
+      svc.issueSweep(
+        {
+          term_days: 14,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'],
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('throws 409 with cycle_week when Prisma P2002 fires (sweep already this week)', async () => {
+    const lockedOrders = [
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+        external_order_id: 'ORD-a',
+      },
+    ];
+    const eligibleNow = lockedOrders.map((o) => ({
+      ...o,
+      num_installments: 3,
+      purchase_date: new Date('2026-04-01'),
+    }));
+    const p2002 = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed on uq_certs_one_sweep_per_cycle',
+      { code: 'P2002', clientVersion: 'test', meta: { target: ['cycle_week'] } },
+    );
+    const prisma = makePrismaForIssue({
+      lockedOrders,
+      eligibleNow,
+      certificateCreateError: p2002,
+    });
+    const svc = new SweepService(prisma, makeAudit());
+
+    // Pre-run simulate so we have a real payload_hash for this scenario
+    (prisma.investor.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInternal());
+    (prisma.setting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 1,
+      default_sweep_rate: D('0.08'),
+    });
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockReset();
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce(eligibleNow);
+    (prisma.merchant.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: 'm-a', current_name: 'A', rif: 'J-1' },
+    ]);
+    (prisma.installment.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+    const sim = (await svc.simulateSweep({
+      term_days: 14,
+      issue_date: new Date('2026-05-15'),
+    })) as Record<string, Record<string, unknown>>;
+
+    // Re-prime the order.findMany mock for the issue path's eligibleNow re-fetch
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce(eligibleNow);
+
+    await expect(
+      svc.issueSweep(
+        {
+          term_days: 14,
+          issue_date: new Date('2026-05-15'),
+          order_ids: sim.pool!.order_ids as string[],
+          expected_payload_hash: sim.payload_hash as unknown as string,
+        },
+        'actor-1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
