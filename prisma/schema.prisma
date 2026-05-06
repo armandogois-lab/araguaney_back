@@ -146,7 +146,8 @@ model User {
   audit_logs          AuditLog[]
   order_events        OrderEvent[]
   installment_events  InstallmentEvent[]
-  investors           Investor[]
+  investors_created   Investor[]         @relation("investor_created_by")
+  investors_updated   Investor[]         @relation("investor_updated_by")
   certificates_issued Certificate[]      @relation("issued_by")
   certificates_deleted Certificate[]     @relation("deleted_by")
   certificate_orders  CertificateOrder[]
@@ -487,9 +488,12 @@ model Investor {
   notes         String?
   created_at    DateTime       @default(dbgenerated("now()")) @db.Timestamptz(6)
   created_by_id String?        @db.Uuid
+  updated_at    DateTime       @default(dbgenerated("now()")) @db.Timestamptz(6)
+  updated_by_id String?        @db.Uuid
 
   // Relations
-  created_by   User?         @relation(fields: [created_by_id], references: [id])
+  created_by   User?         @relation("investor_created_by", fields: [created_by_id], references: [id])
+  updated_by   User?         @relation("investor_updated_by", fields: [updated_by_id], references: [id])
   certificates Certificate[]
 
   // Note: uq_investors_one_internal is a partial unique index (WHERE kind = 'internal')

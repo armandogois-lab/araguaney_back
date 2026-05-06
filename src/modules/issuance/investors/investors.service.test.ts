@@ -39,6 +39,8 @@ describe('InvestorsService.list', () => {
         phone: null,
         notes: null,
         created_at: new Date('2026-04-15'),
+        updated_at: new Date('2026-04-15'),
+        updated_by: null,
       },
     ]);
     (prisma.investor.count as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1);
@@ -81,6 +83,8 @@ describe('InvestorsService.detail', () => {
       phone: null,
       notes: null,
       created_at: new Date('2026-04-15'),
+      updated_at: new Date('2026-04-15'),
+      updated_by: null,
     });
     (prisma.certificate.aggregate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       _sum: { investor_capital: new Prisma.Decimal('100000.00') },
@@ -114,6 +118,8 @@ describe('InvestorsService.create', () => {
       phone: null,
       notes: null,
       created_at: new Date(),
+      updated_at: new Date(),
+      updated_by: null,
     });
     const audit = makeAudit();
     const svc = new InvestorsService(prisma, audit);

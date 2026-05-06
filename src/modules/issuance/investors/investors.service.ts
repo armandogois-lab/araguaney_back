@@ -39,6 +39,7 @@ export class InvestorsService {
     const [rows, total] = await Promise.all([
       this.prisma.investor.findMany({
         where,
+        include: { updated_by: true },
         orderBy: SORT_MAP[query.sort],
         take: query.limit,
         skip: query.offset,
@@ -76,7 +77,10 @@ export class InvestorsService {
   }
 
   async detail(id: string) {
-    const i = await this.prisma.investor.findUnique({ where: { id } });
+    const i = await this.prisma.investor.findUnique({
+      where: { id },
+      include: { updated_by: true },
+    });
     if (!i) throw new NotFoundException('Inversor no encontrado');
 
     const [count, agg] = await Promise.all([
@@ -121,6 +125,7 @@ export class InvestorsService {
         notes: opts.input.notes ?? null,
         created_by_id: opts.actorId,
       },
+      include: { updated_by: true },
     });
 
     await this.audit.recordChange({
