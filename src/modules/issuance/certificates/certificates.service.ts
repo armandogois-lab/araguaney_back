@@ -364,10 +364,68 @@ export class CertificatesService {
     };
   }
 
-  async list(_query: CertificatesListQuery): Promise<unknown> {
-    throw new Error('not implemented');
+  async list(query: CertificatesListQuery) {
+    const SORT_MAP = {
+      issue_date_desc: [{ issue_date: 'desc' as const }],
+      issue_date_asc: [{ issue_date: 'asc' as const }],
+      code_asc: [{ certificate_code: 'asc' as const }],
+    };
+
+    const where: Prisma.CertificateWhereInput = { deleted_at: null };
+    if (query.status) where.status = query.status;
+    if (query.certificate_type) where.certificate_type = query.certificate_type;
+    if (query.investor_id) where.investor_id = query.investor_id;
+    if (query.issue_date_from || query.issue_date_to) {
+      where.issue_date = {};
+      if (query.issue_date_from) (where.issue_date as Record<string, Date>).gte = query.issue_date_from;
+      if (query.issue_date_to) (where.issue_date as Record<string, Date>).lte = query.issue_date_to;
+    }
+    if (query.q) {
+      where.certificate_code = { contains: query.q, mode: 'insensitive' };
+    }
+
+    const [rows, total] = await Promise.all([
+      this.prisma.certificate.findMany({
+        where,
+        include: { investor: true, issued_by: true },
+        orderBy: SORT_MAP[query.sort],
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.certificate.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((c) => toCertificateSummary(c as unknown as CertificateSummaryRow)),
+      total,
+      limit: query.limit,
+      offset: query.offset,
+    };
   }
-  async detail(_id: string): Promise<unknown> {
-    throw new Error('not implemented');
+
+  async detail(id: string) {
+    const c = await this.prisma.certificate.findUnique({
+      where: { id },
+      include: {
+        investor: true,
+        issued_by: true,
+        certificate_orders: {
+          include: {
+            order: {
+              include: {
+                merchant: true,
+                installments: { orderBy: { installment_number: 'asc' } },
+              },
+            },
+          },
+          orderBy: { assigned_at: 'asc' },
+        },
+        certificate_events: { orderBy: { occurred_at: 'desc' }, take: 50 },
+      },
+    });
+    if (!c || c.deleted_at !== null) {
+      throw new NotFoundException('Certificado no encontrado');
+    }
+    return toCertificateDetail(c as unknown as CertificateDetailRow);
   }
 }

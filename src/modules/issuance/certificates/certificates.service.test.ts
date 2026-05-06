@@ -366,3 +366,95 @@ describe('CertificatesService.issue', () => {
     expect(updCall.where.id.in).toEqual(['o-a']);
   });
 });
+
+function makePrismaForListDetail() {
+  return {
+    certificate: {
+      findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+      findUnique: vi.fn(),
+    },
+  } as unknown as PrismaService;
+}
+
+function fakeCertRow(): Record<string, unknown> {
+  return {
+    id: 'cert-1',
+    certificate_code: 'C4572A',
+    certificate_type: 'standard',
+    status: 'issued',
+    investor: { id: 'inv-1', legal_name: 'Inversora Alpha', rif: 'J-12345678-9' },
+    investor_capital: D('100000'),
+    annual_rate: D('0.13'),
+    term_days: 42,
+    price: D('0.984833'),
+    nominal_target: D('101540.0581'),
+    nominal_actual: D('101540'),
+    investor_paid: D('99999.9462'),
+    investor_returned: D('0.0538'),
+    investor_yield: D('1540.0538'),
+    shortfall_pct: D('0.000001'),
+    issue_date: new Date('2026-04-27'),
+    maturity_date: new Date('2026-06-08'),
+    cycle_week: '2026-W18',
+    issued_by: { id: 'user-1', email: 'op@cashea.app', full_name: 'Op' },
+    created_at: new Date('2026-04-27T10:00:00Z'),
+    payload_hash: 'a'.repeat(64),
+    deleted_at: null,
+  };
+}
+
+describe('CertificatesService.list', () => {
+  it('returns paginated mapped certificates filtering deleted_at IS NULL', async () => {
+    const prisma = makePrismaForListDetail();
+    (prisma.certificate.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([fakeCertRow()]);
+    (prisma.certificate.count as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1);
+    const svc = new CertificatesService(prisma, makeAudit());
+    const r = await svc.list({ limit: 50, offset: 0, sort: 'issue_date_desc' });
+    expect(r.total).toBe(1);
+    expect(r.data[0]!.certificate_code).toBe('C4572A');
+    expect(r.data[0]!.investor_capital).toBe('100000.0000');
+    const call = (prisma.certificate.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(call.where.deleted_at).toBeNull();
+  });
+});
+
+describe('CertificatesService.detail', () => {
+  it('returns mapped detail with orders and events', async () => {
+    const prisma = makePrismaForListDetail();
+    (prisma.certificate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...fakeCertRow(),
+      certificate_orders: [
+        {
+          installments_sum_snapshot: D('300'),
+          assigned_at: new Date('2026-04-27T10:00:00Z'),
+          order: {
+            id: 'o-1',
+            external_order_id: 'ORD-1',
+            merchant: { id: 'm-1', current_name: 'A', rif: 'J-1' },
+            purchase_date: new Date('2026-04-01'),
+            max_due_date: new Date('2026-05-15'),
+            installments: [
+              { installment_number: 1, amount: D('100'), due_date: new Date('2026-05-01'), status: 'pending' },
+            ],
+          },
+        },
+      ],
+      certificate_events: [
+        { id: 'evt-1', event_type: 'created', occurred_at: new Date(), payload: {}, actor_id: 'a-1' },
+      ],
+    });
+    const svc = new CertificatesService(prisma, makeAudit());
+    const r = await svc.detail('cert-1');
+    expect(r.orders).toHaveLength(1);
+    expect(r.orders[0]!.installments).toHaveLength(1);
+    expect(r.events[0]!.event_type).toBe('created');
+  });
+
+  it('throws 404 when not found or deleted', async () => {
+    const prisma = makePrismaForListDetail();
+    (prisma.certificate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.detail('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
