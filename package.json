@@ -20,7 +20,7 @@
     "db:generate": "prisma generate",
     "db:pull": "prisma db pull",
     "db:studio": "prisma studio",
-    "openapi:export": "tsx scripts/export-openapi.ts"
+    "openapi:export": "ts-node -T -r tsconfig-paths/register scripts/export-openapi.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
