@@ -379,10 +379,11 @@ export class CertificatesService {
     );
   }
   async list(query: CertificatesListQuery, callerRole: AuthUser['role']) {
-    const hasReadDeleted = await this.hasReadDeletedPerm(callerRole);
-
     const where: Prisma.CertificateWhereInput = {};
-    if (!query.include_deleted || !hasReadDeleted) {
+    if (query.include_deleted) {
+      const hasReadDeleted = await this.hasReadDeletedPerm(callerRole);
+      if (!hasReadDeleted) where.deleted_at = null;
+    } else {
       where.deleted_at = null;
     }
     if (query.status) where.status = query.status;
