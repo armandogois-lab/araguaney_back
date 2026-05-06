@@ -608,7 +608,7 @@ describe('CertificatesService.list', () => {
     ]);
     (prisma.certificate.count as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1);
     const svc = new CertificatesService(prisma, makeAudit());
-    const r = await svc.list({ limit: 50, offset: 0, sort: 'issue_date_desc' });
+    const r = await svc.list({ limit: 50, offset: 0, sort: 'issue_date_desc', include_deleted: false });
     expect(r.total).toBe(1);
     expect(r.data[0]!.certificate_code).toBe('C4572A');
     expect(r.data[0]!.investor_capital).toBe('100000.0000');

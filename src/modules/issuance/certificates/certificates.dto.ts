@@ -34,8 +34,14 @@ export const CertificatesListQuerySchema = PaginationSchema.extend({
   issue_date_to: z.coerce.date().optional(),
   q: z.string().min(1).max(100).optional(),
   sort: z.enum(['issue_date_desc', 'issue_date_asc', 'code_asc']).default('issue_date_desc'),
+  include_deleted: z.coerce.boolean().optional().default(false),
+});
+
+export const CertificateCancelSchema = z.object({
+  reason: z.string().min(5).max(1000),
 });
 
 export type CertificateSimulate = z.infer<typeof CertificateSimulateSchema>;
 export type CertificateIssue = z.infer<typeof CertificateIssueSchema>;
 export type CertificatesListQuery = z.infer<typeof CertificatesListQuerySchema>;
+export type CertificateCancel = z.infer<typeof CertificateCancelSchema>;
