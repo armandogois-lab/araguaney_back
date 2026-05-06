@@ -10,7 +10,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { computePricing, computePayouts } from './pricing/pricing';
 import { fillPool, type EligibleOrder } from './pool-builder/pool-builder';
-import { computePayloadHash } from './payload-hash/payload-hash';
+import { computePayloadHash, buildHashPayload } from './payload-hash/payload-hash';
 import { isoWeek } from './helpers/iso-week';
 import { toSimulationResult } from './responses/simulation-result.mapper';
 import {
@@ -146,7 +146,7 @@ export class CertificatesService {
 
     // Payload hash
     const payload_hash = computePayloadHash(
-      this.buildHashPayload({
+      buildHashPayload({
         capital,
         rate,
         termDays: input.term_days,
@@ -275,7 +275,7 @@ export class CertificatesService {
         const payouts = computePayouts({ capital, price, nominalTarget, nominalActual });
 
         const recomputedHash = computePayloadHash(
-          this.buildHashPayload({
+          buildHashPayload({
             capital,
             rate,
             termDays: input.term_days,
@@ -377,44 +377,6 @@ export class CertificatesService {
       { timeout: 30_000 },
     );
   }
-  private buildHashPayload(opts: {
-    capital: Prisma.Decimal;
-    rate: Prisma.Decimal;
-    termDays: 14 | 42;
-    issueDate: Date;
-    investorId: string;
-    price: Prisma.Decimal;
-    nominalTarget: Prisma.Decimal;
-    nominalActual: Prisma.Decimal;
-    payouts: {
-      investorPaid: Prisma.Decimal;
-      investorReturned: Prisma.Decimal;
-      investorYield: Prisma.Decimal;
-      shortfallPct: Prisma.Decimal;
-    };
-    selectedOrderIds: string[];
-  }) {
-    return {
-      inputs: {
-        capital: opts.capital.toFixed(4),
-        rate: opts.rate.toFixed(6),
-        term_days: opts.termDays,
-        issue_date: opts.issueDate.toISOString().slice(0, 10),
-        investor_id: opts.investorId,
-      },
-      outputs: {
-        price: opts.price.toFixed(6),
-        nominal_target: opts.nominalTarget.toFixed(4),
-        nominal_actual: opts.nominalActual.toFixed(4),
-        investor_paid: opts.payouts.investorPaid.toFixed(4),
-        investor_returned: opts.payouts.investorReturned.toFixed(4),
-        investor_yield: opts.payouts.investorYield.toFixed(4),
-        shortfall_pct: opts.payouts.shortfallPct.toFixed(6),
-      },
-      order_ids: opts.selectedOrderIds,
-    };
-  }
-
   async list(query: CertificatesListQuery) {
     const where: Prisma.CertificateWhereInput = { deleted_at: null };
     if (query.status) where.status = query.status;
