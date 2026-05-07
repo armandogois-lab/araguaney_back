@@ -166,20 +166,34 @@ function fakeInvestorRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makePrismaForUpdate(opts: {
-  existing?: Record<string, unknown> | null;
-  updateThrows?: Error;
-} = {}) {
+function makePrismaForUpdate(
+  opts: {
+    existing?: Record<string, unknown> | null;
+    updateThrows?: Error;
+  } = {},
+) {
   const tx = {
     investor: {
-      findUnique: vi.fn().mockResolvedValue(opts.existing === null ? null : (opts.existing ?? fakeInvestorRow())),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(opts.existing === null ? null : (opts.existing ?? fakeInvestorRow())),
       update: opts.updateThrows
         ? vi.fn().mockRejectedValue(opts.updateThrows)
-        : vi.fn().mockImplementation(async ({ data, where }: { data: Record<string, unknown>; where: { id: string } }) => ({
-            ...(opts.existing ?? fakeInvestorRow()),
-            ...data,
-            id: where.id,
-          })),
+        : vi
+            .fn()
+            .mockImplementation(
+              async ({
+                data,
+                where,
+              }: {
+                data: Record<string, unknown>;
+                where: { id: string };
+              }) => ({
+                ...(opts.existing ?? fakeInvestorRow()),
+                ...data,
+                id: where.id,
+              }),
+            ),
     },
     certificate: {
       count: vi.fn().mockResolvedValue(0),
@@ -201,15 +215,13 @@ describe('InvestorsService.update', () => {
     const audit = makeAudit();
     const svc = new InvestorsService(prisma, audit);
 
-    const r = await svc.update(
-      'i-1',
-      { email: 'new@cashea.app', notes: 'New notes' },
-      'actor-1',
-    );
+    const r = await svc.update('i-1', { email: 'new@cashea.app', notes: 'New notes' }, 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { investor: { update: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { investor: { update: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.investor.update).toHaveBeenCalledOnce();
     const updateArg = tx.investor.update.mock.calls[0]![0] as {
       where: { id: string };
@@ -231,7 +243,10 @@ describe('InvestorsService.update', () => {
     };
     expect(auditArg.entityType).toBe('investor');
     expect(auditArg.action).toBe('update');
-    expect(auditArg.payload.changed.email).toEqual({ from: 'alpha@cashea.app', to: 'new@cashea.app' });
+    expect(auditArg.payload.changed.email).toEqual({
+      from: 'alpha@cashea.app',
+      to: 'new@cashea.app',
+    });
     expect(auditArg.payload.changed.notes).toEqual({ from: null, to: 'New notes' });
 
     expect(r.email).toBe('new@cashea.app');
@@ -245,9 +260,11 @@ describe('InvestorsService.update', () => {
 
     const r = await svc.update('i-1', { email: 'same@cashea.app' }, 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { investor: { update: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { investor: { update: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.investor.update).not.toHaveBeenCalled();
     expect(audit.recordChange).not.toHaveBeenCalled();
     expect(r.email).toBe('same@cashea.app');
@@ -256,18 +273,18 @@ describe('InvestorsService.update', () => {
   it('throws 404 when investor id not found', async () => {
     const prisma = makePrismaForUpdate({ existing: null });
     const svc = new InvestorsService(prisma, makeAudit());
-    await expect(
-      svc.update('missing', { email: 'x@y.com' }, 'actor-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.update('missing', { email: 'x@y.com' }, 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('throws 409 with kind: internal when status changes on internal investor', async () => {
     const existing = fakeInvestorRow({ kind: 'internal' });
     const prisma = makePrismaForUpdate({ existing });
     const svc = new InvestorsService(prisma, makeAudit());
-    await expect(
-      svc.update('i-1', { status: 'inactive' }, 'actor-1'),
-    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.update('i-1', { status: 'inactive' }, 'actor-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 
   it('allows changing legal_name and email on internal investor (only status is locked)', async () => {
@@ -291,9 +308,11 @@ describe('InvestorsService.update', () => {
 
     await svc.update('i-1', { email: null }, 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { investor: { update: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { investor: { update: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     const updateArg = tx.investor.update.mock.calls[0]![0] as {
       data: Record<string, unknown>;
     };
