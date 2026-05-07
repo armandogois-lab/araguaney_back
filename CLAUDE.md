@@ -18,7 +18,7 @@
 
 Los dos repos están **deliberadamente separados**. La comunicación es vía HTTP REST con contrato OpenAPI:
 
-1. Este backend expone Swagger UI en `/api/docs` y el spec en `/api/docs/json`
+1. Este backend expone Swagger UI en `/api/docs` y el spec en `/api/docs-json`
 2. El script `pnpm openapi:export` (o `npm run openapi:export`) genera `./openapi.json` en la raíz
 3. El frontend consume ese spec con `openapi-typescript` para generar tipos TS automáticamente
 
