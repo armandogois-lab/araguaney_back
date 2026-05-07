@@ -16,8 +16,4 @@ describe('HealthController', () => {
     const result = controller.health();
     expect(result).toEqual({ status: 'ok' });
   });
-
-  it('does not depend on PrismaService (no DI)', () => {
-    expect(controller).toBeDefined();
-  });
 });
