@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/permissions.guard';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { mintTestJwt, TEST_SECRET } from '../../../../test/helpers/jwt.helper';
+import { jwksTestProvider } from '../../../../test/helpers/jwks.helper';
 import { mockAuthUser } from '../../../../test/helpers/auth-user.helper';
 
 describe('CertificatesController', () => {
@@ -35,7 +36,11 @@ describe('CertificatesController', () => {
         { permission: { key: 'certificate.read' } },
       ]);
     const config = {
-      get: (k: string) => (k === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined),
+      get: (k: string) => {
+        if (k === 'SUPABASE_URL') return 'https://test.supabase.co';
+        if (k === 'SUPABASE_JWT_SECRET') return TEST_SECRET;
+        return undefined;
+      },
     } as unknown as ConfigService;
 
     const moduleRef = await Test.createTestingModule({
@@ -44,6 +49,7 @@ describe('CertificatesController', () => {
         { provide: CertificatesService, useValue: svc },
         { provide: ConfigService, useValue: config },
         JwtService,
+        await jwksTestProvider(),
         {
           provide: UserLookupService,
           useValue: {

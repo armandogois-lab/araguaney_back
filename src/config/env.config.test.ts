@@ -8,7 +8,6 @@ describe('envSchema', () => {
     SUPABASE_URL: 'https://x.supabase.co',
     SUPABASE_ANON_KEY: 'a',
     SUPABASE_SERVICE_ROLE_KEY: 's',
-    SUPABASE_JWT_SECRET: 'j',
   };
 
   it('parses a minimal valid env with defaults', () => {
