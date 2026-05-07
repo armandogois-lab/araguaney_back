@@ -23,6 +23,8 @@ export const envSchema = z.object({
         .map((o) => o.trim())
         .filter(Boolean),
     ),
+
+  SENTRY_DSN: z.string().url().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
