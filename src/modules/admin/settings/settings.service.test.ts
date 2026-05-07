@@ -23,17 +23,25 @@ function makeAudit() {
   return { recordChange: vi.fn().mockResolvedValue(undefined) } as unknown as AuditService;
 }
 
-function makePrismaForSettings(opts: {
-  existing?: Record<string, unknown> | null;
-} = {}) {
+function makePrismaForSettings(
+  opts: {
+    existing?: Record<string, unknown> | null;
+  } = {},
+) {
   const tx = {
     setting: {
-      findUnique: vi.fn().mockResolvedValue(opts.existing === null ? null : (opts.existing ?? fakeSettingsRow())),
-      update: vi.fn().mockImplementation(async ({ data, where }: { data: Record<string, unknown>; where: { id: number } }) => ({
-        ...(opts.existing ?? fakeSettingsRow()),
-        ...data,
-        id: where.id,
-      })),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(opts.existing === null ? null : (opts.existing ?? fakeSettingsRow())),
+      update: vi
+        .fn()
+        .mockImplementation(
+          async ({ data, where }: { data: Record<string, unknown>; where: { id: number } }) => ({
+            ...(opts.existing ?? fakeSettingsRow()),
+            ...data,
+            id: where.id,
+          }),
+        ),
     },
   };
   const prisma = {
@@ -77,9 +85,11 @@ describe('SettingsService.update', () => {
       'actor-1',
     );
 
-    const tx = (prisma as unknown as {
-      _tx: { setting: { update: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { setting: { update: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.setting.update).toHaveBeenCalledOnce();
     const updateArg = tx.setting.update.mock.calls[0]![0] as {
       where: { id: number };
@@ -87,7 +97,9 @@ describe('SettingsService.update', () => {
     };
     expect(updateArg.where.id).toBe(1);
     expect((updateArg.data.default_sweep_rate as Prisma.Decimal).equals(D('0.09'))).toBe(true);
-    expect((updateArg.data.concentration_warning_threshold as Prisma.Decimal).equals(D('0.2'))).toBe(true);
+    expect(
+      (updateArg.data.concentration_warning_threshold as Prisma.Decimal).equals(D('0.2')),
+    ).toBe(true);
     expect(updateArg.data.shortfall_warning_threshold).toBeUndefined();
     expect(updateArg.data.updated_by_id).toBe('actor-1');
     expect(updateArg.data.updated_at).toBeInstanceOf(Date);
@@ -102,8 +114,14 @@ describe('SettingsService.update', () => {
     expect(auditArg.entityType).toBe('setting');
     expect(auditArg.entityId).toBe('1');
     expect(auditArg.action).toBe('update');
-    expect(auditArg.payload.changed.default_sweep_rate).toEqual({ from: '0.080000', to: '0.090000' });
-    expect(auditArg.payload.changed.concentration_warning_threshold).toEqual({ from: '0.150000', to: '0.200000' });
+    expect(auditArg.payload.changed.default_sweep_rate).toEqual({
+      from: '0.080000',
+      to: '0.090000',
+    });
+    expect(auditArg.payload.changed.concentration_warning_threshold).toEqual({
+      from: '0.150000',
+      to: '0.200000',
+    });
     expect(auditArg.payload.changed.shortfall_warning_threshold).toBeUndefined();
 
     expect(r.default_sweep_rate).toBe('0.090000');
@@ -117,9 +135,11 @@ describe('SettingsService.update', () => {
 
     const r = await svc.update({ default_sweep_rate: 0.08 }, 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { setting: { update: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { setting: { update: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.setting.update).not.toHaveBeenCalled();
     expect(audit.recordChange).not.toHaveBeenCalled();
     expect(r.default_sweep_rate).toBe('0.080000');
@@ -128,8 +148,8 @@ describe('SettingsService.update', () => {
   it('throws 404 when settings row missing', async () => {
     const prisma = makePrismaForSettings({ existing: null });
     const svc = new SettingsService(prisma, makeAudit());
-    await expect(
-      svc.update({ default_sweep_rate: 0.09 }, 'actor-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.update({ default_sweep_rate: 0.09 }, 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
