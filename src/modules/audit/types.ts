@@ -11,6 +11,7 @@ export type AuditEntityType =
   | 'end_user'
   | 'user'
   | 'setting'
+  | 'role_permission'
   | 'system';
 
 export type AuditOptions = {

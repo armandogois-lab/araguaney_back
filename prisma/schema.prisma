@@ -46,6 +46,7 @@ enum AuditEntityType {
   end_user
   user
   setting
+  role_permission
   system
 
   @@map("audit_entity_type")
