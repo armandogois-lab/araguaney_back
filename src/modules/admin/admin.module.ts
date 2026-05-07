@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { SettingsController } from './settings/settings.controller';
+import { SettingsService } from './settings/settings.service';
 
 @Module({
-  controllers: [],
-  providers: [],
+  controllers: [SettingsController],
+  providers: [SettingsService],
 })
 export class AdminModule {}
