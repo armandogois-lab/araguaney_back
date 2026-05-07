@@ -16,8 +16,10 @@ export class AuditQueryService {
     if (query.action) where.action = query.action;
     if (query.occurred_at_from || query.occurred_at_to) {
       where.occurred_at = {};
-      if (query.occurred_at_from) (where.occurred_at as Record<string, Date>).gte = query.occurred_at_from;
-      if (query.occurred_at_to) (where.occurred_at as Record<string, Date>).lte = query.occurred_at_to;
+      if (query.occurred_at_from)
+        (where.occurred_at as Record<string, Date>).gte = query.occurred_at_from;
+      if (query.occurred_at_to)
+        (where.occurred_at as Record<string, Date>).lte = query.occurred_at_to;
     }
 
     const [rows, total] = await Promise.all([

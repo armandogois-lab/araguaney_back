@@ -18,10 +18,12 @@ function fakeAuditRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makePrismaForAudit(opts: {
-  rows?: Array<Record<string, unknown>>;
-  total?: number;
-} = {}) {
+function makePrismaForAudit(
+  opts: {
+    rows?: Array<Record<string, unknown>>;
+    total?: number;
+  } = {},
+) {
   return {
     auditLog: {
       findMany: vi.fn().mockResolvedValue(opts.rows ?? []),
@@ -67,7 +69,8 @@ describe('AuditQueryService.list', () => {
     const from = new Date('2026-05-01T00:00:00.000Z');
     const to = new Date('2026-05-31T23:59:59.000Z');
     await svc.list({
-      limit: 50, offset: 0,
+      limit: 50,
+      offset: 0,
       actor_id: '00000000-0000-4000-8000-000000000001',
       occurred_at_from: from,
       occurred_at_to: to,

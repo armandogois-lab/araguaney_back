@@ -22,9 +22,9 @@ export const AuditListQuerySchema = PaginationSchema.extend({
   action: z.string().min(1).max(50).optional(),
   occurred_at_from: z.coerce.date().optional(),
   occurred_at_to: z.coerce.date().optional(),
-}).refine(
-  (d) => !d.entity_id || d.entity_type !== undefined,
-  { message: 'entity_id requiere entity_type', path: ['entity_id'] },
-);
+}).refine((d) => !d.entity_id || d.entity_type !== undefined, {
+  message: 'entity_id requiere entity_type',
+  path: ['entity_id'],
+});
 
 export type AuditListQuery = z.infer<typeof AuditListQuerySchema>;
