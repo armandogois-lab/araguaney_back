@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service';
 import type { EnvConfig } from '../../config/env.config';
 
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({ storage: { from: vi.fn() } })),
+}));
+
 function makeConfig(): ConfigService<EnvConfig, true> {
   return {
     get: (key: string) => {
