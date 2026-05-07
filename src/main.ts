@@ -17,7 +17,7 @@ async function bootstrap(): Promise<void> {
   const port = config.get('PORT', { infer: true });
   const corsOrigins = config.get('CORS_ORIGINS', { infer: true });
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', { exclude: ['health'] });
   app.useGlobalFilters(new AllExceptionsFilter(logger));
   app.use(helmet());
   app.enableCors({ origin: corsOrigins, credentials: true });
