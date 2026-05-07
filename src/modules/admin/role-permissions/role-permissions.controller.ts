@@ -1,23 +1,11 @@
-import {
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Param,
-  Put,
-} from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { RequirePermission } from '../../auth/decorators/require-permission.decorator';
 import type { AuthUser } from '../../auth/types';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { RolePermissionsService } from './role-permissions.service';
-import {
-  RoleParamSchema,
-  PermissionKeyParamSchema,
-  type RoleParam,
-} from './role-permissions.dto';
+import { RoleParamSchema, PermissionKeyParamSchema, type RoleParam } from './role-permissions.dto';
 
 @ApiTags('role-permissions')
 @ApiBearerAuth()

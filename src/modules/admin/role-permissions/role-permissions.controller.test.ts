@@ -88,9 +88,7 @@ describe('RolePermissionsController', () => {
   });
 
   it('PUT /:role/:permission_key → 401 without token', async () => {
-    await request(app.getHttpServer())
-      .put('/api/role-permissions/auditor/audit.read')
-      .expect(401);
+    await request(app.getHttpServer()).put('/api/role-permissions/auditor/audit.read').expect(401);
   });
 
   it('PUT /:role/:permission_key → 403 when role lacks permission.manage', async () => {

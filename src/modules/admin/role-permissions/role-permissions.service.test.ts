@@ -8,13 +8,15 @@ function makeAudit() {
   return { recordChange: vi.fn().mockResolvedValue(undefined) } as unknown as AuditService;
 }
 
-function makePrismaForRP(opts: {
-  permissionLookup?: { id: string } | null;
-  existingGrant?: { role: string; permission_id: string } | null;
-  permissions?: Array<{ id: string; key: string; description: string }>;
-  rolePermissions?: Array<{ role: string; permission: { key: string } }>;
-  deleteCount?: number;
-} = {}) {
+function makePrismaForRP(
+  opts: {
+    permissionLookup?: { id: string } | null;
+    existingGrant?: { role: string; permission_id: string } | null;
+    permissions?: Array<{ id: string; key: string; description: string }>;
+    rolePermissions?: Array<{ role: string; permission: { key: string } }>;
+    deleteCount?: number;
+  } = {},
+) {
   const tx = {
     rolePermission: {
       findUnique: vi.fn().mockResolvedValue(opts.existingGrant ?? null),
@@ -25,7 +27,11 @@ function makePrismaForRP(opts: {
   const prisma = {
     $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
     permission: {
-      findUnique: vi.fn().mockResolvedValue(opts.permissionLookup === undefined ? { id: 'p-1' } : opts.permissionLookup),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(
+          opts.permissionLookup === undefined ? { id: 'p-1' } : opts.permissionLookup,
+        ),
       findMany: vi.fn().mockResolvedValue(opts.permissions ?? []),
     },
     rolePermission: {
@@ -70,9 +76,11 @@ describe('RolePermissionsService.grant', () => {
 
     const r = await svc.grant('auditor', 'audit.read', 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { rolePermission: { create: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { rolePermission: { create: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.rolePermission.create).toHaveBeenCalledOnce();
     const createArg = tx.rolePermission.create.mock.calls[0]![0] as {
       data: { role: string; permission_id: string; granted_by_id: string };
@@ -108,9 +116,11 @@ describe('RolePermissionsService.grant', () => {
 
     const r = await svc.grant('admin', 'audit.read', 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { rolePermission: { create: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { rolePermission: { create: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.rolePermission.create).not.toHaveBeenCalled();
     expect(audit.recordChange).not.toHaveBeenCalled();
     expect(r).toEqual({ role: 'admin', permission_key: 'audit.read', granted: false });
@@ -119,9 +129,9 @@ describe('RolePermissionsService.grant', () => {
   it('throws 404 when permission_key does not exist in catalog', async () => {
     const prisma = makePrismaForRP({ permissionLookup: null });
     const svc = new RolePermissionsService(prisma, makeAudit());
-    await expect(
-      svc.grant('admin', 'nonexistent.perm', 'actor-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.grant('admin', 'nonexistent.perm', 'actor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
 
@@ -133,9 +143,11 @@ describe('RolePermissionsService.revoke', () => {
 
     const r = await svc.revoke('auditor', 'audit.read', 'actor-1');
 
-    const tx = (prisma as unknown as {
-      _tx: { rolePermission: { deleteMany: ReturnType<typeof vi.fn> } };
-    })._tx;
+    const tx = (
+      prisma as unknown as {
+        _tx: { rolePermission: { deleteMany: ReturnType<typeof vi.fn> } };
+      }
+    )._tx;
     expect(tx.rolePermission.deleteMany).toHaveBeenCalledOnce();
     const deleteArg = tx.rolePermission.deleteMany.mock.calls[0]![0] as {
       where: { role: string; permission_id: string };
@@ -178,8 +190,8 @@ describe('RolePermissionsService.revoke', () => {
   it('throws 409 with role+permission_key when revoking permission.manage from admin (lockout protection)', async () => {
     const prisma = makePrismaForRP();
     const svc = new RolePermissionsService(prisma, makeAudit());
-    await expect(
-      svc.revoke('admin', 'permission.manage', 'actor-1'),
-    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.revoke('admin', 'permission.manage', 'actor-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 });
