@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "db:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "db:pull": "prisma db pull",
     "db:studio": "prisma studio",
     "openapi:export": "ts-node -T -r tsconfig-paths/register scripts/export-openapi.ts"
