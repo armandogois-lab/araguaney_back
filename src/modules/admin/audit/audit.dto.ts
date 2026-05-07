@@ -12,6 +12,7 @@ const AUDIT_ENTITY_TYPES = [
   'end_user',
   'user',
   'setting',
+  'role_permission',
   'system',
 ] as const;
 
