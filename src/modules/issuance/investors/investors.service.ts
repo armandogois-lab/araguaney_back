@@ -10,7 +10,7 @@ import { AuditService } from '../../audit/audit.service';
 import { normalizeRif } from '../../batches/rif-normalizer';
 import { toInvestorSummary, type InvestorSummaryRow } from './responses/investor-summary.mapper';
 import { toInvestorDetail } from './responses/investor-detail.mapper';
-import type { InvestorsListQuery, InvestorCreate } from './investors.dto';
+import type { InvestorsListQuery, InvestorCreate, InvestorUpdate } from './investors.dto';
 
 const SORT_MAP = {
   name_asc: [{ legal_name: 'asc' as const }],
@@ -39,6 +39,7 @@ export class InvestorsService {
     const [rows, total] = await Promise.all([
       this.prisma.investor.findMany({
         where,
+        include: { updated_by: true },
         orderBy: SORT_MAP[query.sort],
         take: query.limit,
         skip: query.offset,
@@ -76,7 +77,10 @@ export class InvestorsService {
   }
 
   async detail(id: string) {
-    const i = await this.prisma.investor.findUnique({ where: { id } });
+    const i = await this.prisma.investor.findUnique({
+      where: { id },
+      include: { updated_by: true },
+    });
     if (!i) throw new NotFoundException('Inversor no encontrado');
 
     const [count, agg] = await Promise.all([
@@ -121,6 +125,7 @@ export class InvestorsService {
         notes: opts.input.notes ?? null,
         created_by_id: opts.actorId,
       },
+      include: { updated_by: true },
     });
 
     await this.audit.recordChange({
@@ -141,6 +146,92 @@ export class InvestorsService {
       ...(created as unknown as InvestorSummaryRow),
       active_cert_count: 0,
       total_invested: new Prisma.Decimal(0),
+    });
+  }
+
+  async update(id: string, input: InvestorUpdate, actorId: string) {
+    return await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.investor.findUnique({
+        where: { id },
+        include: { updated_by: true },
+      });
+      if (!existing) throw new NotFoundException('Inversor no encontrado');
+
+      if (
+        existing.kind === 'internal' &&
+        input.status !== undefined &&
+        input.status !== existing.status
+      ) {
+        throw new ConflictException({
+          message: 'El inversor interno no puede cambiar de estado',
+          kind: 'internal',
+        });
+      }
+
+      const editableFields: Array<keyof InvestorUpdate> = [
+        'legal_name',
+        'email',
+        'phone',
+        'notes',
+        'status',
+      ];
+
+      const changed: Record<string, { from: unknown; to: unknown }> = {};
+      const data: Prisma.InvestorUncheckedUpdateInput = {};
+      for (const k of editableFields) {
+        if (!(k in input)) continue;
+        const next = input[k] ?? null;
+        const prev = (existing as Record<string, unknown>)[k] ?? null;
+        if (prev !== next) {
+          changed[k] = { from: prev, to: next };
+          (data as Record<string, unknown>)[k] = next;
+        }
+      }
+
+      if (Object.keys(changed).length === 0) {
+        return this.assembleSummary(tx, existing);
+      }
+
+      const updated = await tx.investor.update({
+        where: { id },
+        data: {
+          ...data,
+          updated_at: new Date(),
+          updated_by_id: actorId,
+        },
+        include: { updated_by: true },
+      });
+
+      await this.audit.recordChange({
+        entityType: 'investor',
+        entityId: id,
+        action: 'update',
+        actorId,
+        payload: { changed },
+        tx,
+      });
+
+      return this.assembleSummary(tx, updated);
+    });
+  }
+
+  private async assembleSummary(
+    tx: Prisma.TransactionClient,
+    row: { id: string } & Record<string, unknown>,
+  ) {
+    const [count, agg] = await Promise.all([
+      tx.certificate.count({
+        where: { investor_id: row.id, status: { in: ['issued', 'matured'] }, deleted_at: null },
+      }),
+      tx.certificate.aggregate({
+        where: { investor_id: row.id, status: { in: ['issued', 'matured'] }, deleted_at: null },
+        _sum: { investor_capital: true },
+      }),
+    ]);
+    return toInvestorSummary({
+      ...(row as unknown as InvestorSummaryRow),
+      active_cert_count: count,
+      total_invested: agg._sum.investor_capital ?? new Prisma.Decimal(0),
     });
   }
 }

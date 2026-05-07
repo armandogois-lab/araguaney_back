@@ -19,3 +19,18 @@ export const InvestorCreateSchema = z.object({
 
 export type InvestorsListQuery = z.infer<typeof InvestorsListQuerySchema>;
 export type InvestorCreate = z.infer<typeof InvestorCreateSchema>;
+
+export const InvestorUpdateSchema = z
+  .object({
+    legal_name: z.string().min(1).max(255).optional(),
+    email: z.string().email().max(255).nullable().optional(),
+    phone: z.string().min(1).max(50).nullable().optional(),
+    notes: z.string().max(1000).nullable().optional(),
+    status: z.enum(['active', 'inactive']).optional(),
+  })
+  .strict()
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'Debe enviar al menos un campo a actualizar',
+  });
+
+export type InvestorUpdate = z.infer<typeof InvestorUpdateSchema>;

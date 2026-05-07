@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UsePipes,
@@ -19,8 +20,10 @@ import { InvestorsService } from './investors.service';
 import {
   InvestorsListQuerySchema,
   InvestorCreateSchema,
+  InvestorUpdateSchema,
   type InvestorsListQuery,
   type InvestorCreate,
+  type InvestorUpdate,
 } from './investors.dto';
 
 @ApiTags('investors')
@@ -50,5 +53,16 @@ export class InvestorsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.investors.create({ input: body, actorId: user.id });
+  }
+
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('investor.update')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(InvestorUpdateSchema)) body: InvestorUpdate,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.investors.update(id, body, user.id);
   }
 }

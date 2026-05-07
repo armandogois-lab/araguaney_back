@@ -20,11 +20,12 @@ describe('InvestorsController', () => {
     list: ReturnType<typeof vi.fn>;
     detail: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
   };
   let prismaPerms: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    svc = { list: vi.fn(), detail: vi.fn(), create: vi.fn() };
+    svc = { list: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn() };
     prismaPerms = vi
       .fn()
       .mockResolvedValue([
@@ -130,5 +131,69 @@ describe('InvestorsController', () => {
       .send({ legal_name: 'Nueva', rif: 'J-30123456-7', kind: 'juridica' })
       .expect(201);
     expect(res.body.rif).toBe('J-30123456-7');
+  });
+
+  it('PATCH /api/investors/:id → 401 without token', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/investors/00000000-0000-4000-8000-000000000010')
+      .send({ email: 'new@x.com' })
+      .expect(401);
+  });
+
+  it('PATCH /api/investors/:id → 403 when role lacks investor.update', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'investor.read' } }]);
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .patch('/api/investors/00000000-0000-4000-8000-000000000010')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ email: 'new@x.com' })
+      .expect(403);
+  });
+
+  it('PATCH /api/investors/:id → 200 happy', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'investor.update' } }]);
+    svc.update.mockResolvedValueOnce({
+      id: 'i-1',
+      legal_name: 'Inversora Alpha',
+      rif: 'J-12345678-9',
+      kind: 'juridica',
+      status: 'active',
+      email: 'new@x.com',
+      phone: null,
+      notes: null,
+      created_at: '2026-04-15T00:00:00.000Z',
+      updated_at: '2026-05-06T12:00:00.000Z',
+      updated_by: { id: 'u-1', email: 'op@cashea.app', full_name: 'Operator' },
+      active_cert_count: 0,
+      total_invested: '0.0000',
+    });
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    const res = await request(app.getHttpServer())
+      .patch('/api/investors/00000000-0000-4000-8000-000000000010')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ email: 'new@x.com' })
+      .expect(200);
+    expect(res.body.email).toBe('new@x.com');
+    expect(res.body.updated_by.email).toBe('op@cashea.app');
+  });
+
+  it('PATCH /api/investors/:id → 400 when body is empty (Zod refine)', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'investor.update' } }]);
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .patch('/api/investors/00000000-0000-4000-8000-000000000010')
+      .set('Authorization', `Bearer ${t}`)
+      .send({})
+      .expect(400);
+  });
+
+  it('PATCH /api/investors/:id → 400 when body has unknown key (Zod strict)', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'investor.update' } }]);
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .patch('/api/investors/00000000-0000-4000-8000-000000000010')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ rif: 'J-99999999-9' })
+      .expect(400);
   });
 });
