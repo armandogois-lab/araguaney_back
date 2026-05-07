@@ -647,6 +647,79 @@
           }
         ]
       }
+    },
+    "/api/role-permissions": {
+      "get": {
+        "operationId": "RolePermissionsController_getMatrix",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "role-permissions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/role-permissions/{role}/{permission_key}": {
+      "put": {
+        "operationId": "RolePermissionsController_grant",
+        "parameters": [
+          {
+            "name": "permission_key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "role-permissions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "RolePermissionsController_revoke",
+        "parameters": [
+          {
+            "name": "permission_key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "role-permissions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "info": {
