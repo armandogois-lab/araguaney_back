@@ -29,6 +29,7 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/swagger": "^7.4.2",
     "@prisma/client": "^5.22.0",
+    "@sentry/node": "^8.55.2",
     "@supabase/supabase-js": "^2.105.3",
     "exceljs": "^4.4.0",
     "helmet": "^8.0.0",

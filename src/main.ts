@@ -3,11 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { initSentry } from './sentry';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import type { EnvConfig } from './config/env.config';
 
 async function bootstrap(): Promise<void> {
+  initSentry(process.env.SENTRY_DSN, process.env.NODE_ENV ?? 'development');
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   const logger = app.get(Logger);
