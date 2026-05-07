@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
+import * as Sentry from '@sentry/node';
 import type { Request, Response } from 'express';
 
 @Catch()
@@ -30,6 +31,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const err = exception instanceof Error ? exception : new Error(String(exception));
+    Sentry.captureException(err);
     this.logger.error(
       {
         method: request.method,

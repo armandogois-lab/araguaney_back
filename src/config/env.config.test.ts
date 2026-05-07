@@ -45,4 +45,31 @@ describe('envSchema', () => {
   it('rejects empty SUPABASE_SERVICE_ROLE_KEY', () => {
     expect(() => envSchema.parse({ ...valid, SUPABASE_SERVICE_ROLE_KEY: '' })).toThrow();
   });
+
+  it('parses SENTRY_DSN when provided', () => {
+    const r = envSchema.parse({
+      ...valid,
+      SENTRY_DSN: 'https://abc@o123.ingest.sentry.io/456',
+    });
+    expect(r.SENTRY_DSN).toBe('https://abc@o123.ingest.sentry.io/456');
+  });
+
+  it('treats missing SENTRY_DSN as undefined', () => {
+    const r = envSchema.parse(valid);
+    expect(r.SENTRY_DSN).toBeUndefined();
+  });
+
+  it('rejects malformed SENTRY_DSN', () => {
+    expect(() => envSchema.parse({ ...valid, SENTRY_DSN: 'not-a-url' })).toThrow();
+  });
+
+  it('treats empty SENTRY_DSN as undefined (not a URL error)', () => {
+    const r = envSchema.parse({ ...valid, SENTRY_DSN: '' });
+    expect(r.SENTRY_DSN).toBeUndefined();
+  });
+
+  it('treats whitespace-only SENTRY_DSN as undefined', () => {
+    const r = envSchema.parse({ ...valid, SENTRY_DSN: '   ' });
+    expect(r.SENTRY_DSN).toBeUndefined();
+  });
 });
