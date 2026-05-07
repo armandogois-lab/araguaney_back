@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { mintTestJwt, TEST_SECRET } from '../../../test/helpers/jwt.helper';
+import { jwksTestProvider } from '../../../test/helpers/jwks.helper';
 import { mockAuthUser } from '../../../test/helpers/auth-user.helper';
 import { buildWorkbook, STANDARD_HEADERS } from '../../../test/helpers/xlsx.helper';
 
@@ -47,7 +48,11 @@ describe('BatchesController', () => {
     };
 
     const config = {
-      get: (key: string) => (key === 'SUPABASE_JWT_SECRET' ? TEST_SECRET : undefined),
+      get: (key: string) => {
+        if (key === 'SUPABASE_URL') return 'https://test.supabase.co';
+        if (key === 'SUPABASE_JWT_SECRET') return TEST_SECRET;
+        return undefined;
+      },
     } as unknown as ConfigService;
 
     const moduleRef = await Test.createTestingModule({
@@ -56,6 +61,7 @@ describe('BatchesController', () => {
         { provide: BatchesService, useValue: svc },
         { provide: ConfigService, useValue: config },
         JwtService,
+        await jwksTestProvider(),
         { provide: UserLookupService, useValue: lookup },
         {
           provide: PrismaService,
