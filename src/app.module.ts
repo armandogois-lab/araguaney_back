@@ -9,6 +9,7 @@ import { MeModule } from './modules/me/me.module';
 import { BatchesModule } from './modules/batches/batches.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
 import { IssuanceModule } from './modules/issuance/issuance.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { validateEnv } from './config/env.config';
 
 @Module({
@@ -26,6 +27,7 @@ import { validateEnv } from './config/env.config';
     BatchesModule,
     PortfolioModule,
     IssuanceModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
