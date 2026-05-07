@@ -30,4 +30,9 @@ describe('initSentry', () => {
     initSentry('', 'development');
     expect(Sentry.init).not.toHaveBeenCalled();
   });
+
+  it('is a no-op when DSN is whitespace only', () => {
+    initSentry('   ', 'production');
+    expect(Sentry.init).not.toHaveBeenCalled();
+  });
 });

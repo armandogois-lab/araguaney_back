@@ -24,7 +24,11 @@ export const envSchema = z.object({
         .filter(Boolean),
     ),
 
-  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_DSN: z
+    .preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.string().url().optional(),
+    ),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

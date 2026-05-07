@@ -62,4 +62,14 @@ describe('envSchema', () => {
   it('rejects malformed SENTRY_DSN', () => {
     expect(() => envSchema.parse({ ...valid, SENTRY_DSN: 'not-a-url' })).toThrow();
   });
+
+  it('treats empty SENTRY_DSN as undefined (not a URL error)', () => {
+    const r = envSchema.parse({ ...valid, SENTRY_DSN: '' });
+    expect(r.SENTRY_DSN).toBeUndefined();
+  });
+
+  it('treats whitespace-only SENTRY_DSN as undefined', () => {
+    const r = envSchema.parse({ ...valid, SENTRY_DSN: '   ' });
+    expect(r.SENTRY_DSN).toBeUndefined();
+  });
 });
