@@ -2,7 +2,11 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "node dist/main.js"
+# 4 GB heap so we can parse 240k-row Cashea exports without "JavaScript
+# heap out of memory". The parser holds all rows in-memory pre-bulk-insert;
+# real lotes peak around 200-400 MB of heap use. Default Node heap (~1.7 GB
+# on 64-bit) was bumping right against the container during ingestion.
+startCommand = "node --max-old-space-size=4096 dist/main.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
