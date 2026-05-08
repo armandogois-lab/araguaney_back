@@ -59,6 +59,31 @@ describe('ExcelParserService.parse', () => {
     });
   });
 
+  describe('non-data sheets', () => {
+    it('skips a "Resumen" sheet that has no CFB headers and parses the data sheet', async () => {
+      const buf = await buildWorkbook({
+        sheets: [
+          {
+            name: 'Resumen',
+            headers: ['Total general', 'Cantidad de órdenes', 'Monto total'],
+            rows: [['Lote 00085', 4500, '300000.00']],
+          },
+          {
+            name: 'CFB_1_Cotidiana',
+            headers: [...STANDARD_HEADERS],
+            rows: [validRow()],
+          },
+        ],
+      });
+      const r = await svc.parse(buf);
+      expect(r.kind).toBe('parsed');
+      if (r.kind === 'parsed') {
+        expect(r.rows).toHaveLength(1);
+        expect(r.sheets).toEqual(['CFB_1_Cotidiana']);
+      }
+    });
+  });
+
   describe('metadata rows above headers', () => {
     it('finds the header row past 4 leading metadata rows (canonical Cashea export)', async () => {
       const buf = await buildWorkbook({
