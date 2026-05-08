@@ -140,9 +140,9 @@ describe('BatchesController', () => {
       .expect(400);
   });
 
-  it('POST /api/batches → 400 when file > 10 MB', async () => {
+  it('POST /api/batches → 400 when file > 32 MB', async () => {
     const token = await mintTestJwt({ sub: 'auth-uuid' });
-    const big = Buffer.alloc(11 * 1024 * 1024);
+    const big = Buffer.alloc(33 * 1024 * 1024);
     await request(app.getHttpServer())
       .post('/api/batches')
       .set('Authorization', `Bearer ${token}`)
