@@ -156,16 +156,38 @@ export class ExcelParserService {
     const sheets: RawSheet[] = [];
 
     for (const ws of worksheets) {
-      // Find the first non-empty row as the header row
+      // The canonical Cashea export precedes the headers with up to 4 metadata
+      // rows (sheet title, "Órdenes FCB", batch reference, period). Scan the
+      // first SCAN_LIMIT rows and pick the one that contains every required
+      // header. If none match fully, fall back to the row that matched the
+      // most so the reported missing column points at the actual header row.
+      const SCAN_LIMIT = 20;
       let headerRowNum = 0;
-      for (let i = 1; i <= ws.rowCount; i++) {
-        const rowVals = ws.getRow(i).values as unknown[];
-        if (rowVals && rowVals.some((v) => v !== null && v !== undefined && v !== '')) {
-          headerRowNum = i;
-          break;
+      let bestMatchCount = -1;
+      let bestMissing: FieldName[] = [];
+      const scanLimit = Math.min(ws.rowCount, SCAN_LIMIT);
+      for (let i = 1; i <= scanLimit; i++) {
+        const rowVals = (ws.getRow(i).values as unknown[]).slice(1);
+        if (rowVals.every((v) => v === null || v === undefined || v === '')) continue;
+        const normalized = rowVals.map((v) => normalizeHeader(String(v ?? '')));
+        const missing = REQUIRED_HEADERS_NORMALIZED.filter((req) => !normalized.includes(req));
+        const matched = REQUIRED_HEADERS_NORMALIZED.length - missing.length;
+        if (matched > bestMatchCount) {
+          bestMatchCount = matched;
+          bestMissing = [...missing];
+          if (missing.length === 0) {
+            headerRowNum = i;
+            break;
+          }
         }
       }
-      if (headerRowNum === 0) continue;
+      if (headerRowNum === 0) {
+        if (bestMatchCount === -1) continue;
+        return {
+          kind: 'fatal',
+          reason: `Hoja "${ws.name}": falta columna requerida "${bestMissing[0]}"`,
+        };
+      }
 
       // exceljs row.values is 1-indexed (index 0 is undefined), so slice(1) to get 0-indexed array
       const headerVals = (ws.getRow(headerRowNum).values as unknown[]).slice(1);
