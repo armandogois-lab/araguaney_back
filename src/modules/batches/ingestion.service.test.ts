@@ -45,14 +45,22 @@ function makePrismaMock(
   const prisma: Record<string, unknown> = {
     $transaction: vi.fn(async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma)),
     merchant: {
-      findUnique: vi.fn(
-        async ({ where }: { where: { rif: string } }) => merchantStore.get(where.rif) ?? null,
-      ),
-      create: vi.fn(async ({ data }: { data: { rif: string; current_name: string } }) => {
-        const id = `merchant-${merchantStore.size + 1}`;
-        merchantStore.set(data.rif, { id, current_name: data.current_name });
-        return { id, ...data };
+      findMany: vi.fn(async ({ where }: { where: { rif: { in: string[] } } }) => {
+        return where.rif.in
+          .filter((rif) => merchantStore.has(rif))
+          .map((rif) => {
+            const m = merchantStore.get(rif)!;
+            return { id: m.id, rif, current_name: m.current_name };
+          });
       }),
+      createMany: vi.fn(
+        async ({ data }: { data: Array<{ id: string; rif: string; current_name: string }> }) => {
+          for (const m of data) {
+            merchantStore.set(m.rif, { id: m.id, current_name: m.current_name });
+          }
+          return { count: data.length };
+        },
+      ),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: { current_name?: string } }) => {
           if (data.current_name) inserted.merchantNameUpdates++;
@@ -61,22 +69,24 @@ function makePrismaMock(
       ),
     },
     merchantNameHistory: {
-      create: vi.fn(async () => {
-        inserted.merchantHistoryInserts++;
-        return {};
+      createMany: vi.fn(async ({ data }: { data: unknown[] }) => {
+        inserted.merchantHistoryInserts += data.length;
+        return { count: data.length };
       }),
       updateMany: vi.fn(async () => ({ count: 1 })),
     },
     endUser: {
-      findUnique: vi.fn(
-        async ({ where }: { where: { external_hash: string } }) =>
-          endUserStore.get(where.external_hash) ?? null,
-      ),
-      create: vi.fn(async ({ data }: { data: { external_hash: string } }) => {
-        const id = `enduser-${endUserStore.size + 1}`;
-        endUserStore.set(data.external_hash, { id });
-        return { id, ...data };
+      findMany: vi.fn(async ({ where }: { where: { external_hash: { in: string[] } } }) => {
+        return where.external_hash.in
+          .filter((h) => endUserStore.has(h))
+          .map((h) => ({ id: endUserStore.get(h)!.id, external_hash: h }));
       }),
+      createMany: vi.fn(
+        async ({ data }: { data: Array<{ id: string; external_hash: string }> }) => {
+          for (const u of data) endUserStore.set(u.external_hash, { id: u.id });
+          return { count: data.length };
+        },
+      ),
     },
     order: {
       findMany: vi.fn(async ({ where }: { where: { external_order_id: { in: string[] } } }) => {
@@ -84,9 +94,9 @@ function makePrismaMock(
           .filter((id) => orderIds.has(id))
           .map((id) => ({ external_order_id: id }));
       }),
-      create: vi.fn(async ({ data }: { data: unknown }) => {
-        inserted.orders.push(data);
-        return { id: `order-${inserted.orders.length}`, ...(data as object) };
+      createMany: vi.fn(async ({ data }: { data: unknown[] }) => {
+        inserted.orders.push(...data);
+        return { count: data.length };
       }),
     },
     installment: {
@@ -263,7 +273,8 @@ describe('IngestionService.parseAndImport', () => {
 
     expect(result.status).toBe('imported');
     expect(
-      (prisma as unknown as { endUser: { create: ReturnType<typeof vi.fn> } }).endUser.create,
+      (prisma as unknown as { endUser: { createMany: ReturnType<typeof vi.fn> } }).endUser
+        .createMany,
     ).toHaveBeenCalled();
   });
 
@@ -362,6 +373,44 @@ describe('IngestionService.parseAndImport', () => {
       ),
     ).toBe(true);
     expect(result.rowsImported).toBe(0);
+  });
+
+  it('bulks DB writes: 1 merchant.findMany + 1 order.createMany regardless of order count', async () => {
+    const N = 50;
+    const rows = Array.from({ length: N }, (_, i) =>
+      row({
+        'Identificador de Orden': `ORD-${i.toString().padStart(4, '0')}`,
+        'Identificador de Cuota': `INST-${i.toString().padStart(4, '0')}-1`,
+      }),
+    );
+    const buffer = await buildWorkbook({
+      sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows }],
+    });
+    const prisma = makePrismaMock();
+    const svc = new IngestionService(prisma, parser);
+    const result = await svc.parseAndImport({
+      batchId: 'batch-1',
+      fileBuffer: buffer,
+      actorId: 'user-1',
+    });
+
+    expect(result.status).toBe('imported');
+    expect(result.rowsImported).toBe(N);
+    type SpyRec = { [K in 'findMany' | 'createMany']: ReturnType<typeof vi.fn> };
+    const p = prisma as unknown as {
+      merchant: SpyRec;
+      endUser: SpyRec;
+      order: SpyRec;
+      installment: SpyRec;
+    };
+    // Reads: a single findMany per master domain — not N.
+    expect(p.merchant.findMany).toHaveBeenCalledTimes(1);
+    expect(p.endUser.findMany).toHaveBeenCalledTimes(1);
+    // Writes: a single createMany call per domain (50 rows fits in one chunk).
+    expect(p.order.createMany).toHaveBeenCalledTimes(1);
+    expect(p.installment.createMany).toHaveBeenCalledTimes(1);
+    expect(p.merchant.createMany).toHaveBeenCalledTimes(1);
+    expect(p.endUser.createMany).toHaveBeenCalledTimes(1);
   });
 
   it('caps errorsPreview at 50 even when there are more errors', async () => {

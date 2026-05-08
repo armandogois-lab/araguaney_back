@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -6,6 +7,21 @@ import { normalizeRif } from './rif-normalizer';
 import { ErrorCodes, type ErrorCode } from './errors/error-codes';
 import { errorMessageEs } from './errors/error-messages.es';
 import type { IngestionResult, ParsedGroup, ParsedRow, ValidationError } from './types';
+
+// Postgres caps bind parameters at ~32k per query. Each row uses ~10 columns,
+// so 1000 rows ≈ 10k bind params — comfortably under the limit and lets us
+// process a 30 MB Excel without blowing through the transaction budget.
+const BULK_INSERT_CHUNK = 1000;
+
+async function chunkedCreateMany<T>(
+  delegate: { createMany: (args: { data: T[] }) => Promise<{ count: number }> },
+  rows: T[],
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += BULK_INSERT_CHUNK) {
+    const slice = rows.slice(i, i + BULK_INSERT_CHUNK);
+    await delegate.createMany({ data: slice });
+  }
+}
 
 const ERROR_PREVIEW_LIMIT = 50;
 const MAX_FIELD_LEN = 255;
@@ -174,61 +190,162 @@ export class IngestionService {
         let totalOrders = new Prisma.Decimal(0);
         let totalInstallments = new Prisma.Decimal(0);
 
+        // Pick the first occurrence of each rif/hash within the batch — this
+        // matches the previous per-row loop's "first wins" behaviour for
+        // merchant name drift and end_user creation.
+        const rifFirstOccurrence = new Map<string, ParsedGroup>();
+        const hashFirstOccurrence = new Map<string, ParsedGroup>();
         for (const g of validGroups) {
-          // Lookup-or-create merchant
-          const merchant = await tx.merchant.findUnique({ where: { rif: g.rifCanonical } });
-          let merchantId: string;
-          if (!merchant) {
-            const created = await tx.merchant.create({
-              data: { rif: g.rifCanonical, current_name: g.razonSocial },
-            });
-            merchantId = created.id;
-            await tx.merchantNameHistory.create({
-              data: {
-                merchant_id: merchantId,
-                name: g.razonSocial,
-                effective_from: g.fechaDeCompra,
-                effective_to: null,
-              },
-            });
-          } else {
-            merchantId = merchant.id;
-            if (merchant.current_name !== g.razonSocial) {
-              await tx.merchantNameHistory.updateMany({
-                where: { merchant_id: merchantId, effective_to: null },
-                data: { effective_to: g.fechaDeCompra },
-              });
-              await tx.merchantNameHistory.create({
-                data: {
-                  merchant_id: merchantId,
-                  name: g.razonSocial,
-                  effective_from: g.fechaDeCompra,
-                  effective_to: null,
-                },
-              });
-              await tx.merchant.update({
-                where: { id: merchantId },
-                data: { current_name: g.razonSocial },
-              });
-            }
-          }
+          if (!rifFirstOccurrence.has(g.rifCanonical)) rifFirstOccurrence.set(g.rifCanonical, g);
+          if (!hashFirstOccurrence.has(g.usuarioHash)) hashFirstOccurrence.set(g.usuarioHash, g);
+        }
 
-          // Lookup-or-create end_user
-          const eu = await tx.endUser.findUnique({ where: { external_hash: g.usuarioHash } });
-          let endUserId: string;
-          if (!eu) {
-            const created = await tx.endUser.create({
-              data: {
-                external_hash: g.usuarioHash,
-                first_seen_at: new Date(),
-                last_seen_at: new Date(),
-              },
-            });
-            endUserId = created.id;
-          } else {
-            endUserId = eu.id;
-          }
+        // --- Preload masters (2 reads instead of N) ---
+        const rifs = [...rifFirstOccurrence.keys()];
+        const hashes = [...hashFirstOccurrence.keys()];
+        const existingMerchants =
+          rifs.length === 0
+            ? []
+            : await tx.merchant.findMany({
+                where: { rif: { in: rifs } },
+                select: { id: true, rif: true, current_name: true },
+              });
+        const merchantByRif = new Map(existingMerchants.map((m) => [m.rif, m]));
 
+        const existingEndUsers =
+          hashes.length === 0
+            ? []
+            : await tx.endUser.findMany({
+                where: { external_hash: { in: hashes } },
+                select: { id: true, external_hash: true },
+              });
+        const endUserIdByHash = new Map(existingEndUsers.map((u) => [u.external_hash, u.id]));
+
+        // --- Plan master writes ---
+        const merchantIdByRif = new Map<string, string>(
+          existingMerchants.map((m) => [m.rif, m.id]),
+        );
+        const newMerchants: Array<{ id: string; rif: string; current_name: string }> = [];
+        const newMerchantHistory: Array<{
+          merchant_id: string;
+          name: string;
+          effective_from: Date;
+          effective_to: null;
+        }> = [];
+        const driftedMerchantIds: string[] = [];
+        const driftHistoryInserts: Array<{
+          merchant_id: string;
+          name: string;
+          effective_from: Date;
+          effective_to: null;
+        }> = [];
+        const driftMerchantUpdates: Array<{ id: string; current_name: string }> = [];
+
+        for (const [rif, g] of rifFirstOccurrence) {
+          const existing = merchantByRif.get(rif);
+          if (!existing) {
+            const id = randomUUID();
+            merchantIdByRif.set(rif, id);
+            newMerchants.push({ id, rif, current_name: g.razonSocial });
+            newMerchantHistory.push({
+              merchant_id: id,
+              name: g.razonSocial,
+              effective_from: g.fechaDeCompra,
+              effective_to: null,
+            });
+            continue;
+          }
+          if (existing.current_name !== g.razonSocial) {
+            driftedMerchantIds.push(existing.id);
+            driftHistoryInserts.push({
+              merchant_id: existing.id,
+              name: g.razonSocial,
+              effective_from: g.fechaDeCompra,
+              effective_to: null,
+            });
+            driftMerchantUpdates.push({ id: existing.id, current_name: g.razonSocial });
+          }
+        }
+
+        const newEndUsers: Array<{
+          id: string;
+          external_hash: string;
+          first_seen_at: Date;
+          last_seen_at: Date;
+        }> = [];
+        const now = new Date();
+        for (const [hash] of hashFirstOccurrence) {
+          if (!endUserIdByHash.has(hash)) {
+            const id = randomUUID();
+            endUserIdByHash.set(hash, id);
+            newEndUsers.push({
+              id,
+              external_hash: hash,
+              first_seen_at: now,
+              last_seen_at: now,
+            });
+          }
+        }
+
+        // --- Write masters ---
+        // Drift: close old history rows BEFORE inserting new ones with
+        // effective_to: null, otherwise the partial unique index fires.
+        if (driftedMerchantIds.length > 0) {
+          // Use a single updateMany scoped by merchant_id IN (...) and
+          // effective_to IS NULL, then per-row effective_from. Since the
+          // effective_from differs per merchant we still need one updateMany
+          // per drifted merchant — but it's bounded by the number of distinct
+          // merchants in the batch, not by orders.
+          for (const upd of driftHistoryInserts) {
+            await tx.merchantNameHistory.updateMany({
+              where: { merchant_id: upd.merchant_id, effective_to: null },
+              data: { effective_to: upd.effective_from },
+            });
+          }
+        }
+
+        if (newMerchants.length > 0) {
+          await chunkedCreateMany(tx.merchant, newMerchants);
+        }
+        const allMerchantHistory = [...newMerchantHistory, ...driftHistoryInserts];
+        if (allMerchantHistory.length > 0) {
+          await chunkedCreateMany(tx.merchantNameHistory, allMerchantHistory);
+        }
+        for (const upd of driftMerchantUpdates) {
+          await tx.merchant.update({
+            where: { id: upd.id },
+            data: { current_name: upd.current_name },
+          });
+        }
+        if (newEndUsers.length > 0) {
+          await chunkedCreateMany(tx.endUser, newEndUsers);
+        }
+
+        // --- Build orders & installments ---
+        const ordersToCreate: Array<{
+          id: string;
+          external_order_id: string;
+          batch_id: string;
+          merchant_id: string;
+          end_user_id: string;
+          total_amount: Prisma.Decimal;
+          installments_sum: Prisma.Decimal;
+          num_installments: number;
+          purchase_date: Date;
+          max_due_date: Date;
+          status: 'available';
+        }> = [];
+        const installmentsToCreate: Array<{
+          external_installment_id: string;
+          order_id: string;
+          installment_number: number;
+          amount: Prisma.Decimal;
+          due_date: Date;
+          status: 'pending';
+        }> = [];
+
+        for (const g of validGroups) {
+          const orderId = randomUUID();
           const installmentsSum = g.installments.reduce(
             (acc, i) => acc.plus(new Prisma.Decimal(i.amount)),
             new Prisma.Decimal(0),
@@ -238,39 +355,46 @@ export class IngestionService {
             g.installments[0]!.dueDate,
           );
 
-          const order = await tx.order.create({
-            data: {
-              external_order_id: g.externalOrderId,
-              batch_id: opts.batchId,
-              merchant_id: merchantId,
-              end_user_id: endUserId,
-              total_amount: new Prisma.Decimal(g.montoTotalDeLaOrden),
-              installments_sum: installmentsSum,
-              num_installments: g.installments.length,
-              purchase_date: g.fechaDeCompra,
-              max_due_date: maxDueDate,
-              status: 'available',
-            },
+          ordersToCreate.push({
+            id: orderId,
+            external_order_id: g.externalOrderId,
+            batch_id: opts.batchId,
+            merchant_id: merchantIdByRif.get(g.rifCanonical)!,
+            end_user_id: endUserIdByHash.get(g.usuarioHash)!,
+            total_amount: new Prisma.Decimal(g.montoTotalDeLaOrden),
+            installments_sum: installmentsSum,
+            num_installments: g.installments.length,
+            purchase_date: g.fechaDeCompra,
+            max_due_date: maxDueDate,
+            status: 'available',
           });
 
-          await tx.installment.createMany({
-            data: g.installments.map((i) => ({
+          for (const i of g.installments) {
+            installmentsToCreate.push({
               external_installment_id: i.externalInstallmentId,
-              order_id: order.id,
+              order_id: orderId,
               installment_number: i.installmentNumber,
               amount: new Prisma.Decimal(i.amount),
               due_date: i.dueDate,
               status: 'pending',
-            })),
-          });
+            });
+          }
 
           totalOrders = totalOrders.plus(new Prisma.Decimal(g.montoTotalDeLaOrden));
           totalInstallments = totalInstallments.plus(installmentsSum);
         }
 
+        if (ordersToCreate.length > 0) {
+          await chunkedCreateMany(tx.order, ordersToCreate);
+        }
+        if (installmentsToCreate.length > 0) {
+          await chunkedCreateMany(tx.installment, installmentsToCreate);
+        }
+
         if (errors.length > 0) {
-          await tx.importError.createMany({
-            data: errors.map((e) => ({
+          await chunkedCreateMany(
+            tx.importError,
+            errors.map((e) => ({
               batch_id: opts.batchId,
               sheet_name: e.sheetName,
               row_number: e.rowNumber,
@@ -279,7 +403,7 @@ export class IngestionService {
               error_message: e.errorMessage,
               raw_value: e.rawValue,
             })),
-          });
+          );
         }
 
         await tx.batch.update({
