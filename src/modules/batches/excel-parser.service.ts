@@ -182,7 +182,10 @@ export class ExcelParserService {
         }
       }
       if (headerRowNum === 0) {
-        if (bestMatchCount === -1) continue;
+        // bestMatchCount === -1: sheet had no non-empty rows in scan window.
+        // bestMatchCount === 0: sheet has content but matches no required headers
+        // — treat as a non-data sheet (e.g., "Resumen" with totals) and skip it.
+        if (bestMatchCount <= 0) continue;
         return {
           kind: 'fatal',
           reason: `Hoja "${ws.name}": falta columna requerida "${bestMissing[0]}"`,
