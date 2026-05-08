@@ -430,7 +430,10 @@ export class IngestionService {
           errorsPreview: errors.slice(0, ERROR_PREVIEW_LIMIT),
         };
       },
-      { timeout: 60_000 },
+      // 5 min covers the largest Cashea export observed (~240k filas, ~12 MB)
+      // with comfortable headroom; Prisma rolls back if exceeded.
+      // maxWait: 30s avoids "Transaction not started" errors on a busy pool.
+      { timeout: 300_000, maxWait: 30_000 },
     );
   }
 }
