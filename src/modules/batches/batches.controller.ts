@@ -93,6 +93,49 @@ export class BatchesController {
     });
   }
 
+  /**
+   * Two-step direct-to-Storage upload, used when the .xlsx is too large to fit
+   * through the multipart endpoint above (Vercel/Railway cap at 4.5 MB).
+   * Step 1: front asks for an upload slot.
+   */
+  @Post('upload-url')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('batch.upload')
+  async createUploadSlot() {
+    return await this.batches.createUploadSlot();
+  }
+
+  /**
+   * Step 2: after the browser PUT the file directly to Supabase Storage at
+   * the storage_path returned by /upload-url, the front calls this to fetch
+   * the bytes and run the same dedup + ingest pipeline as the multipart path.
+   */
+  @Post('from-storage')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('batch.upload')
+  async processFromStorage(
+    @Body('storage_path') storagePath: string | undefined,
+    @Body('filename') filename: string | undefined,
+    @Body('external_code') externalCode: string | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    if (!storagePath || !/^[a-f0-9-]{36}\.xlsx$/i.test(storagePath)) {
+      throw new BadRequestException('storage_path inválido');
+    }
+    if (!filename || !/\.xlsx$/i.test(filename)) {
+      throw new BadRequestException('filename inválido');
+    }
+    if (externalCode !== undefined && !/^[A-Z0-9-]{1,20}$/.test(externalCode)) {
+      throw new BadRequestException('external_code inválido');
+    }
+    return await this.batches.processFromStorage({
+      storagePath,
+      filename,
+      actorId: user.id,
+      externalCode,
+    });
+  }
+
   @Get()
   @RequirePermission('batch.read')
   async list(@Query(new ZodValidationPipe(BatchListQuerySchema)) query: BatchListQuery) {

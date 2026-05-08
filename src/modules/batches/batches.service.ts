@@ -44,6 +44,67 @@ export class BatchesService {
   ) {}
 
   async upload(input: UploadInput): Promise<UploadResponse> {
+    const storagePath = `${randomUUID()}.xlsx`;
+    await this.storage.uploadExcel(input.fileBuffer, storagePath);
+    return this.persistAndIngest({
+      fileBuffer: input.fileBuffer,
+      filename: input.filename,
+      mimeType: input.mimeType,
+      actorId: input.actorId,
+      externalCode: input.externalCode,
+      storagePath,
+    });
+  }
+
+  /**
+   * Mints a signed URL the browser can PUT directly to. Sidesteps the 4.5 MB
+   * body cap on Vercel Server Actions / Railway request body. The browser
+   * later calls processFromStorage with the same storage_path.
+   */
+  async createUploadSlot(): Promise<{
+    storage_path: string;
+    signed_upload_url: string;
+    signed_upload_token: string;
+  }> {
+    const storagePath = `${randomUUID()}.xlsx`;
+    const { signedUrl, token } = await this.storage.createSignedUploadUrl(storagePath);
+    return {
+      storage_path: storagePath,
+      signed_upload_url: signedUrl,
+      signed_upload_token: token,
+    };
+  }
+
+  /**
+   * Picks up where createUploadSlot left off: fetch the bytes the browser put
+   * into Storage, then run the same dedup + persist + ingest pipeline as the
+   * legacy multipart path.
+   */
+  async processFromStorage(input: {
+    storagePath: string;
+    filename: string;
+    actorId: string;
+    externalCode: string | undefined;
+  }): Promise<UploadResponse> {
+    const fileBuffer = await this.storage.downloadExcel(input.storagePath);
+    return this.persistAndIngest({
+      fileBuffer,
+      filename: input.filename,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      actorId: input.actorId,
+      externalCode: input.externalCode,
+      storagePath: input.storagePath,
+    });
+  }
+
+  private async persistAndIngest(input: {
+    fileBuffer: Buffer;
+    filename: string;
+    mimeType: string;
+    actorId: string;
+    externalCode: string | undefined;
+    storagePath: string;
+  }): Promise<UploadResponse> {
     const contentHash = createHash('sha256').update(input.fileBuffer).digest('hex');
 
     const existing = await this.prisma.excelUpload.findFirst({
@@ -58,13 +119,10 @@ export class BatchesService {
       });
     }
 
-    const storagePath = `${randomUUID()}.xlsx`;
-    await this.storage.uploadExcel(input.fileBuffer, storagePath);
-
     const upload = await this.prisma.excelUpload.create({
       data: {
         filename: input.filename,
-        storage_path: storagePath,
+        storage_path: input.storagePath,
         storage_bucket: 'excel-uploads',
         content_hash: contentHash,
         file_size_bytes: BigInt(input.fileBuffer.byteLength),
