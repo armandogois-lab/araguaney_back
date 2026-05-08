@@ -27,7 +27,7 @@ import { toBatchSummary } from './responses/batch-summary.mapper';
 import { toImportError } from './responses/import-error.mapper';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 32 * 1024 * 1024;
 
 @ApiTags('batches')
 @ApiBearerAuth()
@@ -67,7 +67,7 @@ export class BatchesController {
       throw new BadRequestException('Archivo requerido');
     }
     if (file.size > MAX_FILE_BYTES) {
-      throw new BadRequestException('Archivo excede 10 MB');
+      throw new BadRequestException('Archivo excede 32 MB');
     }
 
     const hasXlsExt = /\.xls$/i.test(file.originalname ?? '');
