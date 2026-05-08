@@ -59,6 +59,32 @@ describe('ExcelParserService.parse', () => {
     });
   });
 
+  describe('metadata rows above headers', () => {
+    it('finds the header row past 4 leading metadata rows (canonical Cashea export)', async () => {
+      const buf = await buildWorkbook({
+        sheets: [
+          {
+            name: 'CFB_1_Cotidiana',
+            metadataRows: [
+              ['CFB_1_Cotidiana', 'Grupo Cashea VE, C.A'],
+              ['Órdenes FCB'],
+              ['Ordenes_FCB_LOTE_00085'],
+              ['Período: Del 20/03/2026 Hasta 20/03/2026'],
+            ],
+            headers: [...STANDARD_HEADERS],
+            rows: [validRow()],
+          },
+        ],
+      });
+      const r = await svc.parse(buf);
+      expect(r.kind).toBe('parsed');
+      if (r.kind === 'parsed') {
+        expect(r.rows).toHaveLength(1);
+        expect(r.rows[0]!.rif).toBe('J-12345678-9');
+      }
+    });
+  });
+
   describe('header normalization', () => {
     it('matches headers with different case/accents/spacing', async () => {
       const headers = [

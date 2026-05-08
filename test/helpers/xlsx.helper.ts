@@ -4,16 +4,21 @@ export type SheetSpec = {
   name: string;
   headers: string[];
   rows: Array<Array<string | number | Date | null>>;
+  /**
+   * Optional rows written above the header row. The canonical Cashea export
+   * has 4 metadata rows (sheet title, "Órdenes FCB", batch reference, period)
+   * before the actual headers — tests that emulate that layout pass them here.
+   */
+  metadataRows?: Array<Array<string | number | Date | null>>;
 };
 
-/**
- * Builds an XLSX workbook in-memory and returns a Buffer suitable for parser tests.
- * Each sheet's first row is the headers; subsequent rows are data.
- */
 export async function buildWorkbook(opts: { sheets: SheetSpec[] }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   for (const s of opts.sheets) {
     const ws = wb.addWorksheet(s.name);
+    if (s.metadataRows) {
+      for (const meta of s.metadataRows) ws.addRow(meta);
+    }
     ws.addRow(s.headers);
     for (const row of s.rows) {
       ws.addRow(row);
