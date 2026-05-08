@@ -18,7 +18,11 @@ import { buildWorkbook, STANDARD_HEADERS } from '../../../test/helpers/xlsx.help
 
 describe('BatchesController', () => {
   let app: INestApplication;
-  let svc: { upload: ReturnType<typeof vi.fn> };
+  let svc: {
+    upload: ReturnType<typeof vi.fn>;
+    createUploadSlot: ReturnType<typeof vi.fn>;
+    processFromStorage: ReturnType<typeof vi.fn>;
+  };
   let prismaPerms: ReturnType<typeof vi.fn>;
   let prismaBatchFindUnique: ReturnType<typeof vi.fn>;
   let prismaBatchFindMany: ReturnType<typeof vi.fn>;
@@ -28,7 +32,11 @@ describe('BatchesController', () => {
   let lookup: { findByAuthId: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    svc = { upload: vi.fn() };
+    svc = {
+      upload: vi.fn(),
+      createUploadSlot: vi.fn(),
+      processFromStorage: vi.fn(),
+    } as unknown as typeof svc;
     prismaPerms = vi
       .fn()
       .mockResolvedValue([
@@ -289,5 +297,77 @@ describe('BatchesController', () => {
       .expect(200);
     expect(res.body.total).toBe(1);
     expect(res.body.data[0].error_code).toBe('invalid_rif');
+  });
+
+  it('POST /api/batches/upload-url → 200 with signed slot', async () => {
+    svc.createUploadSlot.mockResolvedValueOnce({
+      storage_path: '00000000-0000-4000-8000-000000000001.xlsx',
+      signed_upload_url: 'https://signed.example/abc',
+      signed_upload_token: 't0k',
+    });
+    const token = await mintTestJwt({ sub: 'auth-uuid' });
+    const res = await request(app.getHttpServer())
+      .post('/api/batches/upload-url')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.body.signed_upload_url).toBe('https://signed.example/abc');
+    expect(res.body.signed_upload_token).toBe('t0k');
+    expect(res.body.storage_path).toMatch(/\.xlsx$/);
+  });
+
+  it('POST /api/batches/from-storage → 200 with imported result', async () => {
+    svc.processFromStorage.mockResolvedValueOnce({
+      batch_id: 'b-1',
+      external_code: 'B-20260506-103245',
+      excel_upload_id: 'eu-1',
+      status: 'imported',
+      rows_imported: 100,
+      rows_rejected: 0,
+      total_orders_amount: '1000.0000',
+      total_installments_amount: '1000.0000',
+      imported_at: '2026-05-06T10:00:00.000Z',
+      rejection_reason: null,
+      decimal_separator_detected: 'dot',
+      errors_preview: [],
+      errors_total: 0,
+    });
+    const token = await mintTestJwt({ sub: 'auth-uuid' });
+    const res = await request(app.getHttpServer())
+      .post('/api/batches/from-storage')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        storage_path: '00000000-0000-4000-8000-000000000001.xlsx',
+        filename: 'lote.xlsx',
+      })
+      .expect(200);
+    expect(res.body.status).toBe('imported');
+    expect(res.body.rows_imported).toBe(100);
+    expect(svc.processFromStorage).toHaveBeenCalledWith({
+      storagePath: '00000000-0000-4000-8000-000000000001.xlsx',
+      filename: 'lote.xlsx',
+      actorId: expect.any(String),
+      externalCode: undefined,
+    });
+  });
+
+  it('POST /api/batches/from-storage → 400 when storage_path is malformed', async () => {
+    const token = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .post('/api/batches/from-storage')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ storage_path: '../etc/passwd', filename: 'x.xlsx' })
+      .expect(400);
+  });
+
+  it('POST /api/batches/from-storage → 400 when filename is not xlsx', async () => {
+    const token = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .post('/api/batches/from-storage')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        storage_path: '00000000-0000-4000-8000-000000000001.xlsx',
+        filename: 'evil.txt',
+      })
+      .expect(400);
   });
 });

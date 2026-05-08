@@ -62,3 +62,65 @@ describe('StorageService.uploadExcel', () => {
     expect(fromCalls).toEqual(['excel-uploads']);
   });
 });
+
+describe('StorageService.createSignedUploadUrl', () => {
+  it('returns the signed url + token from supabase', async () => {
+    const createSignedUploadUrl = vi.fn().mockResolvedValue({
+      data: { signedUrl: 'https://signed.example/abc', token: 't0k', path: 'abc.xlsx' },
+      error: null,
+    });
+    const svc = new StorageService(makeConfig());
+    (
+      svc as unknown as {
+        storageFrom: (b: string) => { createSignedUploadUrl: typeof createSignedUploadUrl };
+      }
+    ).storageFrom = () => ({ createSignedUploadUrl });
+
+    const result = await svc.createSignedUploadUrl('abc.xlsx');
+    expect(result).toEqual({
+      signedUrl: 'https://signed.example/abc',
+      token: 't0k',
+      path: 'abc.xlsx',
+    });
+    expect(createSignedUploadUrl).toHaveBeenCalledWith('abc.xlsx');
+  });
+
+  it('throws when supabase returns an error', async () => {
+    const createSignedUploadUrl = vi
+      .fn()
+      .mockResolvedValue({ data: null, error: { message: 'denied' } });
+    const svc = new StorageService(makeConfig());
+    (
+      svc as unknown as {
+        storageFrom: (b: string) => { createSignedUploadUrl: typeof createSignedUploadUrl };
+      }
+    ).storageFrom = () => ({ createSignedUploadUrl });
+    await expect(svc.createSignedUploadUrl('x.xlsx')).rejects.toThrow(
+      /signed upload URL failed.*denied/i,
+    );
+  });
+});
+
+describe('StorageService.downloadExcel', () => {
+  it('returns the file as a Buffer', async () => {
+    const arrayBuffer = vi.fn().mockResolvedValue(new TextEncoder().encode('hello').buffer);
+    const download = vi.fn().mockResolvedValue({ data: { arrayBuffer }, error: null });
+    const svc = new StorageService(makeConfig());
+    (svc as unknown as { storageFrom: (b: string) => { download: typeof download } }).storageFrom =
+      () => ({ download });
+
+    const buf = await svc.downloadExcel('p.xlsx');
+    expect(buf.toString()).toBe('hello');
+    expect(download).toHaveBeenCalledWith('p.xlsx');
+  });
+
+  it('throws when supabase returns an error', async () => {
+    const download = vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } });
+    const svc = new StorageService(makeConfig());
+    (svc as unknown as { storageFrom: (b: string) => { download: typeof download } }).storageFrom =
+      () => ({ download });
+    await expect(svc.downloadExcel('p.xlsx')).rejects.toThrow(
+      /storage download failed.*not found/i,
+    );
+  });
+});
