@@ -93,6 +93,44 @@
         ]
       }
     },
+    "/api/batches/upload-url": {
+      "post": {
+        "operationId": "BatchesController_createUploadSlot",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "batches"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/batches/from-storage": {
+      "post": {
+        "operationId": "BatchesController_processFromStorage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "batches"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/batches/{id}": {
       "get": {
         "operationId": "BatchesController_detail",
