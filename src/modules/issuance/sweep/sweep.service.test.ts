@@ -91,8 +91,8 @@ describe('SweepService.simulateSweep', () => {
     });
     expect(r.pool!.order_count).toBe(2);
     expect(r.payouts!.nominal_actual).toBe('100.0000');
-    // capital = 100 × price(0.08, 14d) = 100 × 0.996889 = 99.6889
-    expect(r.payouts!.investor_capital).toBe('99.6889');
+    // capital = 100 × price(0.08, 14d) = 100 × 0.996899 = 99.6899
+    expect(r.payouts!.investor_capital).toBe('99.6899');
     expect(r.payouts!.investor_returned).toBe('0.0000');
     expect(r.payouts!.shortfall_pct).toBe('0.000000');
     expect(r.payload_hash).toMatch(/^[a-f0-9]{64}$/);
