@@ -14,8 +14,13 @@ export type Pricing = {
 };
 
 export function computePricing(i: PricingInputs): Pricing {
+  // Money Market Yield: price = 1 / (1 + rate × days / 360).
+  // The "rate" is the simple-interest annualized yield the investor earns on
+  // their invested capital (Actual/360). See docs/DECISIONS/2026-05-12-money-market-yield.md.
   const ratio = i.rate.mul(i.termDays).div(360);
-  const price = new D(1).minus(ratio).toDecimalPlaces(6, D.ROUND_HALF_UP);
+  const price = new D(1)
+    .div(new D(1).plus(ratio))
+    .toDecimalPlaces(6, D.ROUND_HALF_UP);
   const nominalTarget = i.capital.div(price).toDecimalPlaces(4, D.ROUND_HALF_UP);
   return { price, nominalTarget };
 }
