@@ -38,14 +38,14 @@ Cualquier código que viole una de estas reglas es un bug, no una feature.
 
 - **Plazos**: ENUM 14 días o 42 días (no hay otros)
 - **Convenio de días**: Actual/360 (siempre)
-- **Modalidad**: A descuento (`price = 1 - rate × days / 360`)
+- **Modalidad**: Money market yield (`price = 1 / (1 + rate × days / 360)`). La "tasa anual" representa el **rendimiento simple anualizado** que recibe el inversor sobre su capital invertido (Actual/360), no un descuento sobre el nominal. Ver `docs/DECISIONS/2026-05-12-money-market-yield.md`.
 - **Tasa**: libre por certificado, negociada con cada inversor, **inmutable** después de emitir
 - **Código del certificado**: formato `C{NNNN}{LETRA}` continuando secuencia desde `C4572A`
 
 ### Cálculos
 
 ```
-price             = 1 − (annual_rate × term_days / 360)
+price             = 1 / (1 + annual_rate × term_days / 360)
 nominal_target    = investor_capital / price
 nominal_actual    = Σ installments_sum de orders asignadas (≤ target)
 investor_paid     = nominal_actual × price
@@ -204,6 +204,7 @@ Si alguna parece mal, escribe un nuevo doc en `docs/DECISIONS/` proponiendo el c
 - Soft-delete solo en tablas críticas
 - Permisología híbrida: rol + matriz de permisos editable
 - OpenAPI como contrato compartido con el frontend (no GraphQL, no tRPC)
+- Money market yield para `price` (`1 / (1 + r × d / 360)`) en vez de bank discount yield (`1 − r × d / 360`) — convención de Mercantil Merinvest, 2026-05-12. Ver `docs/DECISIONS/2026-05-12-money-market-yield.md`.
 
 ## Glosario
 
