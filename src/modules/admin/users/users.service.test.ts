@@ -102,3 +102,121 @@ describe('UsersService.list', () => {
     });
   });
 });
+
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+
+function makePrismaForUpdate(
+  opts: { target?: { id: string; role: string; is_active: boolean } | null } = {},
+) {
+  const tx = {
+    user: {
+      findUnique: vi.fn().mockResolvedValue(
+        opts.target === undefined
+          ? { id: 't-1', role: 'operator', is_active: true }
+          : opts.target,
+      ),
+      update: vi.fn().mockImplementation(({ data, where }) => ({
+        id: where.id,
+        email: 'target@x.com',
+        full_name: 'Target',
+        role: data.role ?? 'operator',
+        is_active: data.is_active ?? true,
+        last_login_at: null,
+        created_at: new Date('2026-04-01T00:00:00Z'),
+      })),
+    },
+  };
+  const prisma = {
+    $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
+  } as unknown as PrismaService;
+  (prisma as unknown as { _tx: typeof tx })._tx = tx;
+  return prisma;
+}
+
+describe('UsersService.update', () => {
+  it('rejects self-edit with BadRequestException', async () => {
+    const prisma = makePrismaForUpdate();
+    const svc = new UsersService(prisma, makeAudit());
+    await expect(svc.update('actor-1', 'actor-1', { role: 'admin' })).rejects.toThrow(
+      new BadRequestException('No podés modificarte a vos mismo.'),
+    );
+  });
+
+  it('rejects empty body with BadRequestException', async () => {
+    const prisma = makePrismaForUpdate();
+    const svc = new UsersService(prisma, makeAudit());
+    await expect(svc.update('actor-1', 't-1', {})).rejects.toThrow(
+      new BadRequestException('Debés indicar al menos un cambio.'),
+    );
+  });
+
+  it('rejects unknown user with NotFoundException', async () => {
+    const prisma = makePrismaForUpdate({ target: null });
+    const svc = new UsersService(prisma, makeAudit());
+    await expect(svc.update('actor-1', 'missing', { role: 'admin' })).rejects.toThrow(
+      new NotFoundException('Usuario no encontrado.'),
+    );
+  });
+
+  it('updates role only and audits with before/after', async () => {
+    const prisma = makePrismaForUpdate({
+      target: { id: 't-1', role: 'operator', is_active: true },
+    });
+    const audit = makeAudit();
+    const svc = new UsersService(prisma, audit);
+
+    const r = await svc.update('actor-1', 't-1', { role: 'admin' });
+
+    expect(r.role).toBe('admin');
+    const tx = (prisma as unknown as { _tx: { user: { update: ReturnType<typeof vi.fn> } } })._tx;
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: { id: 't-1' },
+      data: { role: 'admin' },
+      select: expect.any(Object),
+    });
+    expect(audit.recordChange).toHaveBeenCalledOnce();
+    const auditArg = (audit.recordChange as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(auditArg).toMatchObject({
+      entityType: 'user',
+      entityId: 't-1',
+      action: 'update',
+      actorId: 'actor-1',
+      payload: {
+        before: { role: 'operator' },
+        after: { role: 'admin' },
+      },
+    });
+  });
+
+  it('updates is_active only and audits before/after with only that field', async () => {
+    const prisma = makePrismaForUpdate({
+      target: { id: 't-1', role: 'operator', is_active: true },
+    });
+    const audit = makeAudit();
+    const svc = new UsersService(prisma, audit);
+
+    await svc.update('actor-1', 't-1', { is_active: false });
+
+    const auditArg = (audit.recordChange as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(auditArg.payload).toEqual({
+      before: { is_active: true },
+      after: { is_active: false },
+    });
+  });
+
+  it('updates both fields and audits both', async () => {
+    const prisma = makePrismaForUpdate({
+      target: { id: 't-1', role: 'operator', is_active: true },
+    });
+    const audit = makeAudit();
+    const svc = new UsersService(prisma, audit);
+
+    await svc.update('actor-1', 't-1', { role: 'admin', is_active: false });
+
+    const auditArg = (audit.recordChange as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(auditArg.payload).toEqual({
+      before: { role: 'operator', is_active: true },
+      after: { role: 'admin', is_active: false },
+    });
+  });
+});
