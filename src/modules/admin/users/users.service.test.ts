@@ -110,11 +110,13 @@ function makePrismaForUpdate(
 ) {
   const tx = {
     user: {
-      findUnique: vi.fn().mockResolvedValue(
-        opts.target === undefined
-          ? { id: 't-1', role: 'operator', is_active: true }
-          : opts.target,
-      ),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(
+          opts.target === undefined
+            ? { id: 't-1', role: 'operator', is_active: true }
+            : opts.target,
+        ),
       update: vi.fn().mockImplementation(({ data, where }) => ({
         id: where.id,
         email: 'target@x.com',
