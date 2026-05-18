@@ -16,10 +16,12 @@ import type { AuthUser } from '../../auth/types';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { CertificatesService } from './certificates.service';
 import {
+  CertificateApproveSchema,
   CertificateSimulateSchema,
   CertificateIssueSchema,
   CertificatesListQuerySchema,
   CertificateCancelSchema,
+  type CertificateApprove,
   type CertificateSimulate,
   type CertificateIssue,
   type CertificatesListQuery,
@@ -66,12 +68,26 @@ export class CertificatesController {
 
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission('certificate.cancel')
+  // Permission check happens inside the service: drafts can be cancelled by
+  // the creator or any admin; issued certs require certificate.cancel (admin).
+  // The guard runs certificate.read as a baseline.
+  @RequirePermission('certificate.read')
   cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(CertificateCancelSchema)) body: CertificateCancel,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.certificates.cancel(id, body.reason, user.id);
+    return this.certificates.cancel(id, body.reason, user.id, user.role);
+  }
+
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('certificate.approve')
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CertificateApproveSchema)) _body: CertificateApprove,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.certificates.approve(id, user.id);
   }
 }
