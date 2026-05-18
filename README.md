@@ -36,6 +36,6 @@ The frontend (`araguaney_front`) generates TypeScript types from this spec.
 
 - `src/` — application code
 - `prisma/` — Prisma schema (single source of truth for DB types)
-- `infra/sql/` — Idempotent SQL migrations for Supabase (apply in order 001 → 006)
+- `infra/sql/` — Idempotent SQL migrations for Supabase (apply in order 001 → 013)
 - `scripts/` — Tooling, including OpenAPI exporter
 - `docs/` — Product constitution and decision records
