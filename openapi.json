@@ -593,6 +593,34 @@
         ]
       }
     },
+    "/api/certificates/{id}/approve": {
+      "post": {
+        "operationId": "CertificatesController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "certificates"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/certificates/sweep/simulate": {
       "post": {
         "operationId": "SweepController_simulate",

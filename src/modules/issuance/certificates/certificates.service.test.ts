@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -891,7 +890,8 @@ describe('CertificatesService.cancel(draft)', () => {
     const result = await svc.cancel('c-1', undefined, 'op-1', 'operator');
 
     expect(result.status).toBe('cancelled');
-    const tx = (prisma as unknown as { _tx: { certificate: { update: ReturnType<typeof vi.fn> } } })._tx;
+    const tx = (prisma as unknown as { _tx: { certificate: { update: ReturnType<typeof vi.fn> } } })
+      ._tx;
     const updateArg = tx.certificate.update.mock.calls[0]![0];
     expect(updateArg.data.status).toBe('cancelled');
     expect(updateArg.data.cancelled_at).toBeInstanceOf(Date);
@@ -916,7 +916,8 @@ describe('CertificatesService.cancel(draft)', () => {
 
     await svc.cancel('c-1', 'wrong rate', 'admin-1', 'admin');
 
-    const tx = (prisma as unknown as { _tx: { certificate: { update: ReturnType<typeof vi.fn> } } })._tx;
+    const tx = (prisma as unknown as { _tx: { certificate: { update: ReturnType<typeof vi.fn> } } })
+      ._tx;
     expect(tx.certificate.update.mock.calls[0]![0].data.cancellation_reason).toBe('wrong rate');
   });
 
@@ -1141,8 +1142,6 @@ describe('CertificatesService.approve', () => {
   it('throws NotFoundException when cert does not exist', async () => {
     const prisma = makePrismaForApprove({ certRow: null });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.approve('c-missing', 'admin-1')).rejects.toThrow(
-      'Certificado no encontrado',
-    );
+    await expect(svc.approve('c-missing', 'admin-1')).rejects.toThrow('Certificado no encontrado');
   });
 });
