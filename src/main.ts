@@ -2,16 +2,27 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { initSentry } from './sentry';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import type { EnvConfig } from './config/env.config';
 
+// Default Express body-parser limit is 100kb. A real cert issue posts
+// the UUIDs of every order in the pool (up to 50k uuids ≈ 2-3 MB JSON).
+// 10 MB leaves comfortable headroom while still capping malicious bloat.
+const JSON_BODY_LIMIT = '10mb';
+
 async function bootstrap(): Promise<void> {
   initSentry(process.env.SENTRY_DSN, process.env.NODE_ENV ?? 'development');
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  // Replace the default body parsers with versions that allow the larger
+  // certificate-issue payloads. Must run before any controller is registered.
+  app.use(json({ limit: JSON_BODY_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
   const logger = app.get(Logger);
   app.useLogger(logger);
