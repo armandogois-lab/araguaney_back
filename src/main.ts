@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { json, urlencoded } from 'express';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { initSentry } from './sentry';
 import { AppModule } from './app.module';
@@ -17,12 +17,15 @@ const JSON_BODY_LIMIT = '10mb';
 async function bootstrap(): Promise<void> {
   initSentry(process.env.SENTRY_DSN, process.env.NODE_ENV ?? 'development');
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
 
-  // Replace the default body parsers with versions that allow the larger
-  // certificate-issue payloads. Must run before any controller is registered.
-  app.use(json({ limit: JSON_BODY_LIMIT }));
-  app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
+  // Configure body-parser limits via NestExpressApplication's typed helper.
+  // Must run before any request is served — does NOT double-register the
+  // built-in parsers (unlike calling app.use(json()) directly).
+  app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
+  app.useBodyParser('urlencoded', { limit: JSON_BODY_LIMIT, extended: true });
 
   const logger = app.get(Logger);
   app.useLogger(logger);
