@@ -20,7 +20,10 @@ export const CertificateSimulateSchema = SimulateBase.refine(
 );
 
 export const CertificateIssueSchema = SimulateBase.extend({
-  order_ids: z.array(z.string().uuid()).min(1).max(2000),
+  // Cap large enough to cover real Cashea batch volume. Lower caps caused
+  // back 400s ("Datos de entrada inválidos") for simulations en el rango
+  // 2k-3k cuotas. Real lotes pueden traer 30k+ órdenes.
+  order_ids: z.array(z.string().uuid()).min(1).max(50000),
   expected_payload_hash: z.string().regex(/^[a-f0-9]{64}$/),
 }).refine((d) => d.issue_date.getTime() >= startOfTodayUTC().getTime(), {
   message: 'La fecha de emisión no puede ser anterior a hoy',
