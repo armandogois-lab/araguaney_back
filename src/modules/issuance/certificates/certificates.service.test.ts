@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -696,9 +697,19 @@ function makePrismaForCancel(
       certificate_type: string;
       deleted_at: Date | null;
     } | null;
-    certOrders?: Array<{ id: string; order_id: string }>;
+    certRow?: {
+      id: string;
+      certificate_code: string | null;
+      status: string;
+      certificate_type: string;
+      deleted_at: Date | null;
+    } | null;
+    ownerRow?: Array<{ issued_by_id: string }>;
+    certOrders?: Array<{ id?: string; order_id: string }>;
   } = {},
 ) {
+  // Support both `cert` (legacy) and `certRow` (new draft tests) option names
+  const certData = opts.certRow !== undefined ? opts.certRow : opts.cert;
   const tx = {
     $queryRaw: vi.fn().mockImplementation(async (template: unknown) => {
       const sql = Array.isArray((template as { strings?: string[] }).strings)
@@ -707,7 +718,11 @@ function makePrismaForCancel(
           ? (template as string[]).join('?')
           : String(template);
       if (sql.includes('FROM cfb.certificates') && sql.includes('FOR UPDATE')) {
-        return opts.cert ? [opts.cert] : [];
+        return certData ? [certData] : [];
+      }
+      if (sql.includes('FROM cfb.certificates') && !sql.includes('FOR UPDATE')) {
+        // owner lookup for draft cancel
+        return opts.ownerRow ?? (certData ? [{ issued_by_id: 'op-1' }] : []);
       }
       if (sql.includes('FROM cfb.certificate_orders') && sql.includes('FOR UPDATE')) {
         return opts.certOrders ?? [];
@@ -720,6 +735,9 @@ function makePrismaForCancel(
     },
     order: { updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }) },
     certificateEvent: { create: vi.fn().mockResolvedValue({ id: 'evt-1' }) },
+    rolePermission: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'rp-1' }), // admin has cert.cancel by default
+    },
   };
   const prisma = {
     $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
@@ -746,7 +764,7 @@ describe('CertificatesService.cancel', () => {
     const audit = makeAudit();
     const svc = new CertificatesService(prisma, audit);
 
-    const r = await svc.cancel('cert-1', 'Operator entered wrong rate', 'actor-1');
+    const r = await svc.cancel('cert-1', 'Operator entered wrong rate', 'actor-1', 'admin');
 
     const tx = (
       prisma as unknown as {
@@ -762,10 +780,19 @@ describe('CertificatesService.cancel', () => {
     expect(tx.certificate.update).toHaveBeenCalledOnce();
     const updateArg = tx.certificate.update.mock.calls[0]![0] as {
       where: { id: string };
-      data: { status: string; deleted_at: Date; deleted_by_id: string; deleted_reason: string };
+      data: {
+        status: string;
+        cancelled_at: Date;
+        cancellation_reason: string;
+        deleted_at: Date;
+        deleted_by_id: string;
+        deleted_reason: string;
+      };
     };
     expect(updateArg.where.id).toBe('cert-1');
     expect(updateArg.data.status).toBe('cancelled');
+    expect(updateArg.data.cancelled_at).toBeInstanceOf(Date);
+    expect(updateArg.data.cancellation_reason).toBe('Operator entered wrong rate');
     expect(updateArg.data.deleted_by_id).toBe('actor-1');
     expect(updateArg.data.deleted_reason).toBe('Operator entered wrong rate');
 
@@ -793,6 +820,10 @@ describe('CertificatesService.cancel', () => {
     expect(evtArg.data.payload.order_count).toBe(2);
 
     expect(audit.recordChange).toHaveBeenCalledOnce();
+    const auditArg = (audit.recordChange as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      payload: { from_status: string };
+    };
+    expect(auditArg.payload.from_status).toBe('issued');
     expect(r).toMatchObject({
       id: 'cert-1',
       certificate_code: 'C4572A',
@@ -805,7 +836,7 @@ describe('CertificatesService.cancel', () => {
   it('throws 404 when cert id not found', async () => {
     const prisma = makePrismaForCancel({ cert: null });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.cancel('missing', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+    await expect(svc.cancel('missing', 'Reason here', 'actor-1', 'admin')).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
@@ -820,7 +851,7 @@ describe('CertificatesService.cancel', () => {
     };
     const prisma = makePrismaForCancel({ cert });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1', 'admin')).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
@@ -835,8 +866,92 @@ describe('CertificatesService.cancel', () => {
     };
     const prisma = makePrismaForCancel({ cert });
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1')).rejects.toBeInstanceOf(
+    await expect(svc.cancel('cert-1', 'Reason here', 'actor-1', 'admin')).rejects.toBeInstanceOf(
       ConflictException,
+    );
+  });
+});
+
+describe('CertificatesService.cancel(draft)', () => {
+  it('creator can cancel their own draft', async () => {
+    const prisma = makePrismaForCancel({
+      certRow: {
+        id: 'c-1',
+        certificate_code: null,
+        status: 'draft',
+        certificate_type: 'standard',
+        deleted_at: null,
+      },
+      ownerRow: [{ issued_by_id: 'op-1' }],
+      certOrders: [{ order_id: 'o-1' }, { order_id: 'o-2' }],
+    });
+    const audit = makeAudit();
+    const svc = new CertificatesService(prisma, audit);
+
+    const result = await svc.cancel('c-1', undefined, 'op-1', 'operator');
+
+    expect(result.status).toBe('cancelled');
+    const tx = (prisma as unknown as { _tx: { certificate: { update: ReturnType<typeof vi.fn> } } })._tx;
+    const updateArg = tx.certificate.update.mock.calls[0]![0];
+    expect(updateArg.data.status).toBe('cancelled');
+    expect(updateArg.data.cancelled_at).toBeInstanceOf(Date);
+    expect(updateArg.data.cancellation_reason).toBeNull();
+    expect(updateArg.data.deleted_at).toBeUndefined();
+  });
+
+  it('admin can cancel any draft', async () => {
+    const prisma = makePrismaForCancel({
+      certRow: {
+        id: 'c-1',
+        certificate_code: null,
+        status: 'draft',
+        certificate_type: 'standard',
+        deleted_at: null,
+      },
+      ownerRow: [{ issued_by_id: 'op-1' }],
+      certOrders: [{ order_id: 'o-1' }],
+    });
+    const audit = makeAudit();
+    const svc = new CertificatesService(prisma, audit);
+
+    await svc.cancel('c-1', 'wrong rate', 'admin-1', 'admin');
+
+    const tx = (prisma as unknown as { _tx: { certificate: { update: ReturnType<typeof vi.fn> } } })._tx;
+    expect(tx.certificate.update.mock.calls[0]![0].data.cancellation_reason).toBe('wrong rate');
+  });
+
+  it('non-creator non-admin operator cannot cancel a draft', async () => {
+    const prisma = makePrismaForCancel({
+      certRow: {
+        id: 'c-1',
+        certificate_code: null,
+        status: 'draft',
+        certificate_type: 'standard',
+        deleted_at: null,
+      },
+      ownerRow: [{ issued_by_id: 'op-1' }],
+      certOrders: [],
+    });
+    const svc = new CertificatesService(prisma, makeAudit());
+
+    await expect(svc.cancel('c-1', undefined, 'op-2', 'operator')).rejects.toThrow(
+      'Solo el creador del borrador o un admin puede cancelarlo',
+    );
+  });
+
+  it('rejects cancel on already cancelled cert', async () => {
+    const prisma = makePrismaForCancel({
+      certRow: {
+        id: 'c-1',
+        certificate_code: 'C0001A',
+        status: 'cancelled',
+        certificate_type: 'standard',
+        deleted_at: null,
+      },
+    });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.cancel('c-1', undefined, 'admin-1', 'admin')).rejects.toThrow(
+      /status actual: cancelled/,
     );
   });
 });

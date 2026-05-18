@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -443,7 +444,7 @@ export class CertificatesService {
     return toCertificateDetail(c as unknown as CertificateDetailRow);
   }
 
-  async cancel(id: string, reason: string, actorId: string) {
+  async cancel(id: string, reason: string | undefined, actorId: string, actorRole: AuthUser['role']) {
     return await this.prisma.$transaction(
       async (tx) => {
         const lockedCertRows = await tx.$queryRaw<
@@ -466,11 +467,36 @@ export class CertificatesService {
         }
         const cert = lockedCertRows[0]!;
 
-        if (cert.status !== 'issued') {
+        if (cert.status !== 'draft' && cert.status !== 'issued') {
           throw new ConflictException({
-            message: 'Solo se pueden cancelar certificados con estado "issued"',
+            message: `Solo se pueden cancelar borradores o certificados emitidos (status actual: ${cert.status})`,
             current_status: cert.status,
           });
+        }
+
+        // Draft cancel: creator or admin. Issued cancel: admin with cert.cancel.
+        if (cert.status === 'draft') {
+          const ownerRow = await tx.$queryRaw<Array<{ issued_by_id: string }>>(
+            Prisma.sql`SELECT issued_by_id FROM cfb.certificates WHERE id = ${id}::uuid`,
+          );
+          const isCreator = ownerRow[0]?.issued_by_id === actorId;
+          const isAdmin = actorRole === 'admin';
+          if (!isCreator && !isAdmin) {
+            throw new ForbiddenException(
+              'Solo el creador del borrador o un admin puede cancelarlo',
+            );
+          }
+        } else {
+          // status === 'issued': require certificate.cancel grant for actor's role
+          const hasCancelPerm = await tx.rolePermission.findFirst({
+            where: { role: actorRole, permission: { key: 'certificate.cancel' } },
+            select: { id: true },
+          });
+          if (!hasCancelPerm) {
+            throw new ForbiddenException(
+              'Solo un usuario con permiso certificate.cancel puede cancelar certificados emitidos',
+            );
+          }
         }
 
         const certOrders = await tx.$queryRaw<Array<{ order_id: string }>>(
@@ -486,9 +512,17 @@ export class CertificatesService {
           where: { id },
           data: {
             status: 'cancelled',
-            deleted_at: now,
-            deleted_by_id: actorId,
-            deleted_reason: reason,
+            cancelled_at: now,
+            cancellation_reason: reason ?? null,
+            // For issued certs we also populate the legacy soft-delete columns to
+            // preserve symmetry with pre-Slice-13 data. Drafts skip them.
+            ...(cert.status === 'issued'
+              ? {
+                  deleted_at: now,
+                  deleted_by_id: actorId,
+                  deleted_reason: reason ?? 'cancelled_without_reason',
+                }
+              : {}),
           },
         });
 
@@ -525,9 +559,10 @@ export class CertificatesService {
           action: 'cancel',
           actorId,
           payload: {
+            from_status: cert.status,
             certificate_code: cert.certificate_code,
             certificate_type: cert.certificate_type,
-            reason,
+            reason: reason ?? null,
             order_count: orderIds.length,
             released_order_ids: orderIds,
           },
