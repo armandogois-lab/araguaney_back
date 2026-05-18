@@ -1017,3 +1017,132 @@ describe('CertificatesService.detail with hasReadDeleted gate', () => {
     await expect(svc.detail('cert-1', 'operator')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+function makePrismaForApprove(
+  opts: {
+    certRow?: {
+      id: string;
+      status: string;
+      certificate_code: string | null;
+      certificate_type: string;
+      deleted_at: Date | null;
+    } | null;
+    nextCode?: string;
+    certOrders?: Array<{ order_id: string }>;
+  } = {},
+) {
+  const certRow =
+    opts.certRow === undefined
+      ? {
+          id: 'c-1',
+          status: 'draft',
+          certificate_code: null,
+          certificate_type: 'standard',
+          deleted_at: null,
+        }
+      : opts.certRow;
+  const tx = {
+    $queryRaw: vi.fn().mockImplementation(async (template: unknown) => {
+      const sql = Array.isArray((template as { strings?: string[] }).strings)
+        ? (template as { strings: string[] }).strings.join('?')
+        : Array.isArray(template)
+          ? (template as string[]).join('?')
+          : String(template);
+      if (sql.includes('FROM cfb.certificates')) {
+        return certRow ? [certRow] : [];
+      }
+      if (sql.includes('next_certificate_code')) {
+        return [{ code: opts.nextCode ?? 'C4572A' }];
+      }
+      return [];
+    }),
+    certificate: {
+      update: vi.fn().mockResolvedValue({}),
+    },
+    certificateOrder: {
+      findMany: vi.fn().mockResolvedValue(opts.certOrders ?? []),
+    },
+    order: {
+      updateMany: vi.fn().mockResolvedValue({ count: opts.certOrders?.length ?? 0 }),
+    },
+    certificateEvent: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+  };
+  const prisma = {
+    $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
+  } as unknown as PrismaService;
+  (prisma as unknown as { _tx: typeof tx })._tx = tx;
+  return prisma;
+}
+
+describe('CertificatesService.approve', () => {
+  it('promotes draft to issued, assigns code, flips orders to assigned, writes event + audit', async () => {
+    const prisma = makePrismaForApprove({
+      certRow: {
+        id: 'c-1',
+        status: 'draft',
+        certificate_code: null,
+        certificate_type: 'standard',
+        deleted_at: null,
+      },
+      nextCode: 'C4572A',
+      certOrders: [{ order_id: 'o-1' }, { order_id: 'o-2' }],
+    });
+    const audit = makeAudit();
+    const svc = new CertificatesService(prisma, audit);
+
+    const result = await svc.approve('c-1', 'admin-1');
+
+    expect(result.status).toBe('issued');
+    expect(result.certificate_code).toBe('C4572A');
+
+    const tx = (prisma as unknown as { _tx: any })._tx;
+    expect(tx.certificate.update).toHaveBeenCalledOnce();
+    const updateArg = tx.certificate.update.mock.calls[0]![0];
+    expect(updateArg.data.status).toBe('issued');
+    expect(updateArg.data.certificate_code).toBe('C4572A');
+    expect(updateArg.data.approved_by_id).toBe('admin-1');
+    expect(updateArg.data.approved_at).toBeInstanceOf(Date);
+
+    expect(tx.order.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['o-1', 'o-2'] } },
+      data: { status: 'assigned' },
+    });
+
+    expect(tx.certificateEvent.create).toHaveBeenCalledOnce();
+    const eventArg = tx.certificateEvent.create.mock.calls[0]![0];
+    expect(eventArg.data.event_type).toBe('approved');
+    expect(eventArg.data.actor_id).toBe('admin-1');
+
+    expect(audit.recordChange).toHaveBeenCalledOnce();
+    const auditArg = (audit.recordChange as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(auditArg.action).toBe('approve');
+    expect(auditArg.payload).toMatchObject({
+      before: { status: 'draft' },
+      after: { status: 'issued', certificate_code: 'C4572A' },
+    });
+  });
+
+  it('rejects approve when cert not in draft', async () => {
+    const prisma = makePrismaForApprove({
+      certRow: {
+        id: 'c-1',
+        status: 'issued',
+        certificate_code: 'C0001A',
+        certificate_type: 'standard',
+        deleted_at: null,
+      },
+    });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.approve('c-1', 'admin-1')).rejects.toThrow(/status actual: issued/);
+  });
+
+  it('throws NotFoundException when cert does not exist', async () => {
+    const prisma = makePrismaForApprove({ certRow: null });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(svc.approve('c-missing', 'admin-1')).rejects.toThrow(
+      'Certificado no encontrado',
+    );
+  });
+});

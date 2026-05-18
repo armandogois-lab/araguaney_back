@@ -581,6 +581,103 @@ export class CertificatesService {
     );
   }
 
+  async approve(id: string, actorId: string) {
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const lockedCertRows = await tx.$queryRaw<
+          Array<{
+            id: string;
+            status: string;
+            certificate_code: string | null;
+            certificate_type: string;
+            deleted_at: Date | null;
+          }>
+        >(
+          Prisma.sql`SELECT id, status, certificate_code, certificate_type, deleted_at
+                     FROM cfb.certificates
+                     WHERE id = ${id}::uuid
+                     FOR UPDATE`,
+        );
+
+        if (lockedCertRows.length === 0 || lockedCertRows[0]!.deleted_at !== null) {
+          throw new NotFoundException('Certificado no encontrado');
+        }
+        const cert = lockedCertRows[0]!;
+
+        if (cert.status !== 'draft') {
+          throw new ConflictException({
+            message: `Solo se pueden aprobar borradores (status actual: ${cert.status})`,
+            current_status: cert.status,
+          });
+        }
+
+        const codeRows = await tx.$queryRaw<Array<{ code: string }>>(
+          Prisma.sql`SELECT cfb.next_certificate_code() AS code`,
+        );
+        const certificate_code = codeRows[0]!.code;
+        const now = new Date();
+
+        await tx.certificate.update({
+          where: { id },
+          data: {
+            status: 'issued',
+            certificate_code,
+            approved_by_id: actorId,
+            approved_at: now,
+          },
+        });
+
+        const certOrders = await tx.certificateOrder.findMany({
+          where: { certificate_id: id, released_at: null },
+          select: { order_id: true },
+        });
+        const orderIds = certOrders.map((co) => co.order_id);
+        if (orderIds.length > 0) {
+          await tx.order.updateMany({
+            where: { id: { in: orderIds } },
+            data: { status: 'assigned' },
+          });
+        }
+
+        await tx.certificateEvent.create({
+          data: {
+            certificate_id: id,
+            event_type: 'approved',
+            payload: {
+              certificate_code,
+              order_count: orderIds.length,
+              approved_at: now.toISOString(),
+            } as Prisma.InputJsonValue,
+            actor_id: actorId,
+          },
+        });
+
+        await this.audit.recordChange({
+          entityType: 'certificate',
+          entityId: id,
+          action: 'approve',
+          actorId,
+          payload: {
+            before: { status: 'draft' },
+            after: { status: 'issued', certificate_code },
+            certificate_type: cert.certificate_type,
+            order_count: orderIds.length,
+          },
+          tx,
+        });
+
+        return {
+          id,
+          certificate_code,
+          status: 'issued' as const,
+          approved_at: now.toISOString(),
+          assigned_order_count: orderIds.length,
+        };
+      },
+      { timeout: 30_000 },
+    );
+  }
+
   private async hasReadDeletedPerm(role: AuthUser['role']): Promise<boolean> {
     const grant = await this.prisma.rolePermission.findFirst({
       where: { role, permission: { key: 'certificate.read_deleted' } },
