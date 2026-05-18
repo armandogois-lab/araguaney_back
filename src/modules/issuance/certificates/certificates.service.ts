@@ -295,16 +295,12 @@ export class CertificatesService {
         }
 
         const cycleWeek = isoWeek(input.issue_date);
-        const codeRows = await tx.$queryRaw<Array<{ code: string }>>(
-          Prisma.sql`SELECT cfb.next_certificate_code() AS code`,
-        );
-        const certificate_code = codeRows[0]!.code;
 
         const cert = await tx.certificate.create({
           data: {
-            certificate_code,
+            certificate_code: null,
             certificate_type: 'standard',
-            status: 'issued',
+            status: 'draft',
             investor_id: input.investor_id,
             investor_capital: capital,
             annual_rate: rate,
@@ -336,15 +332,14 @@ export class CertificatesService {
 
         await tx.order.updateMany({
           where: { id: { in: selected.map((o) => o.id) } },
-          data: { status: 'assigned' },
+          data: { status: 'reserved' },
         });
 
         await tx.certificateEvent.create({
           data: {
             certificate_id: cert.id,
-            event_type: 'created',
+            event_type: 'draft_created',
             payload: {
-              certificate_code,
               order_count: selected.length,
               nominal_actual: nominalActual.toFixed(4),
               investor_paid: payouts.investorPaid.toFixed(4),
@@ -356,10 +351,9 @@ export class CertificatesService {
         await this.audit.recordChange({
           entityType: 'certificate',
           entityId: cert.id,
-          action: 'create',
+          action: 'create_draft',
           actorId,
           payload: {
-            certificate_code,
             inputs: {
               capital: capital.toFixed(4),
               rate: rate.toFixed(6),
@@ -373,7 +367,7 @@ export class CertificatesService {
           tx,
         });
 
-        return { id: cert.id, certificate_code };
+        return { id: cert.id, status: 'draft' as const };
       },
       { timeout: 30_000 },
     );

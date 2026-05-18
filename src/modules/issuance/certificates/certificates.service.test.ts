@@ -494,7 +494,7 @@ describe('CertificatesService.issue', () => {
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
-  it('inserts certificate_event with event_type=created and updates orders to assigned', async () => {
+  it('inserts certificate_event with event_type=draft_created and updates orders to reserved', async () => {
     const lockedOrders = [
       {
         id: 'o-a',
@@ -553,12 +553,12 @@ describe('CertificatesService.issue', () => {
     const evtCall = tx.certificateEvent.create.mock.calls[0]![0] as {
       data: { event_type: string; payload: unknown };
     };
-    expect(evtCall.data.event_type).toBe('created');
+    expect(evtCall.data.event_type).toBe('draft_created');
     const updCall = tx.order.updateMany.mock.calls[0]![0] as {
       where: { id: { in: string[] } };
       data: { status: string };
     };
-    expect(updCall.data.status).toBe('assigned');
+    expect(updCall.data.status).toBe('reserved');
     expect(updCall.where.id.in).toEqual(['o-a']);
   });
 });
