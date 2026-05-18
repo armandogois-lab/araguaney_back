@@ -23,11 +23,12 @@ describe('CertificatesController', () => {
     list: ReturnType<typeof vi.fn>;
     detail: ReturnType<typeof vi.fn>;
     cancel: ReturnType<typeof vi.fn>;
+    approve: ReturnType<typeof vi.fn>;
   };
   let prismaPerms: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    svc = { simulate: vi.fn(), issue: vi.fn(), list: vi.fn(), detail: vi.fn(), cancel: vi.fn() };
+    svc = { simulate: vi.fn(), issue: vi.fn(), list: vi.fn(), detail: vi.fn(), cancel: vi.fn(), approve: vi.fn() };
     prismaPerms = vi
       .fn()
       .mockResolvedValue([
@@ -205,8 +206,8 @@ describe('CertificatesController', () => {
       .expect(401);
   });
 
-  it('POST /api/certificates/:id/cancel → 403 when role lacks certificate.cancel', async () => {
-    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.read' } }]);
+  it('POST /api/certificates/:id/cancel → 403 when role lacks certificate.read', async () => {
+    prismaPerms.mockResolvedValueOnce([]);
     const t = await mintTestJwt({ sub: 'auth-uuid' });
     await request(app.getHttpServer())
       .post('/api/certificates/00000000-0000-4000-8000-000000000010/cancel')
@@ -215,8 +216,8 @@ describe('CertificatesController', () => {
       .expect(403);
   });
 
-  it('POST /api/certificates/:id/cancel → 200 happy', async () => {
-    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.cancel' } }]);
+  it('POST /api/certificates/:id/cancel → 200 happy (service enforces role-level auth)', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.read' } }]);
     svc.cancel.mockResolvedValueOnce({
       id: 'cert-1',
       certificate_code: 'C4572A',
@@ -234,14 +235,59 @@ describe('CertificatesController', () => {
     expect(res.body.released_order_count).toBe(2);
   });
 
-  it('POST /api/certificates/:id/cancel → 400 when reason is too short (Zod)', async () => {
-    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.cancel' } }]);
+  it('POST /api/certificates/:id/cancel → passes user.role to service', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.read' } }]);
+    svc.cancel.mockResolvedValueOnce({
+      id: 'cert-1',
+      certificate_code: 'C4572A',
+      status: 'cancelled',
+      cancelled_at: '2026-05-06T12:00:00.000Z',
+      released_order_count: 0,
+    });
     const t = await mintTestJwt({ sub: 'auth-uuid' });
     await request(app.getHttpServer())
       .post('/api/certificates/00000000-0000-4000-8000-000000000010/cancel')
       .set('Authorization', `Bearer ${t}`)
-      .send({ reason: 'no' })
-      .expect(400);
+      .send({})
+      .expect(200);
+    expect(svc.cancel).toHaveBeenCalledOnce();
+    const args = svc.cancel.mock.calls[0]!;
+    expect(args[3]).toBe('operator'); // user.role forwarded as 4th arg
+  });
+
+  it('POST /api/certificates/:id/approve → 401 without token', async () => {
+    await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/approve')
+      .send({})
+      .expect(401);
+  });
+
+  it('POST /api/certificates/:id/approve → 403 when role lacks certificate.approve', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.read' } }]);
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/approve')
+      .set('Authorization', `Bearer ${t}`)
+      .send({})
+      .expect(403);
+  });
+
+  it('POST /api/certificates/:id/approve → 200 happy', async () => {
+    prismaPerms.mockResolvedValueOnce([{ permission: { key: 'certificate.approve' } }]);
+    svc.approve.mockResolvedValueOnce({
+      id: '00000000-0000-4000-8000-000000000010',
+      certificate_code: 'C4572A',
+      status: 'issued',
+      approved_at: '2026-05-14T12:00:00.000Z',
+    });
+    const t = await mintTestJwt({ sub: 'auth-uuid' });
+    const res = await request(app.getHttpServer())
+      .post('/api/certificates/00000000-0000-4000-8000-000000000010/approve')
+      .set('Authorization', `Bearer ${t}`)
+      .send({})
+      .expect(200);
+    expect(res.body.status).toBe('issued');
+    expect(res.body.approved_at).toBeDefined();
   });
 
   it('GET /api/certificates passes callerRole to the service', async () => {

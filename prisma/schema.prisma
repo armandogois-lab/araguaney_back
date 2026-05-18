@@ -120,6 +120,7 @@ enum InvestorStatus {
 
 enum OrderStatus {
   available
+  reserved
   assigned
   matured
   defaulted
@@ -149,8 +150,9 @@ model User {
   installment_events  InstallmentEvent[]
   investors_created   Investor[]         @relation("investor_created_by")
   investors_updated   Investor[]         @relation("investor_updated_by")
-  certificates_issued Certificate[]      @relation("issued_by")
-  certificates_deleted Certificate[]     @relation("deleted_by")
+  certificates_issued    Certificate[]      @relation("issued_by")
+  certificates_approved  Certificate[]      @relation("approved_by")
+  certificates_deleted   Certificate[]      @relation("deleted_by")
   certificate_orders  CertificateOrder[]
   certificate_events  CertificateEvent[]
   settings            Setting[]
@@ -517,9 +519,9 @@ model CertificateSequence {
 
 model Certificate {
   id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  certificate_code String            @unique @db.VarChar
+  certificate_code String?           @unique @db.VarChar
   certificate_type CertificateType   @default(standard)
-  status           CertificateStatus @default(issued)
+  status           CertificateStatus @default(draft)
   investor_id      String            @db.Uuid
   investor_capital Decimal           @db.Decimal(18, 4)
   annual_rate      Decimal           @db.Decimal(7, 6)
@@ -535,17 +537,22 @@ model Certificate {
   issue_date       DateTime          @db.Date
   maturity_date    DateTime          @db.Date
   matured_at       DateTime?         @db.Timestamptz(6)
-  cycle_week       String            @db.VarChar
-  payload_hash     String            @db.VarChar
-  issued_by_id     String            @db.Uuid
-  created_at       DateTime          @default(dbgenerated("now()")) @db.Timestamptz(6)
-  deleted_at       DateTime?         @db.Timestamptz(6)
-  deleted_by_id    String?           @db.Uuid
-  deleted_reason   String?
+  cycle_week           String            @db.VarChar
+  payload_hash         String            @db.VarChar
+  issued_by_id         String            @db.Uuid
+  approved_by_id       String?           @db.Uuid
+  approved_at          DateTime?         @db.Timestamptz(6)
+  cancelled_at         DateTime?         @db.Timestamptz(6)
+  cancellation_reason  String?
+  created_at           DateTime          @default(dbgenerated("now()")) @db.Timestamptz(6)
+  deleted_at           DateTime?         @db.Timestamptz(6)
+  deleted_by_id        String?           @db.Uuid
+  deleted_reason       String?
 
   // Relations
   investor           Investor           @relation(fields: [investor_id], references: [id])
   issued_by          User               @relation("issued_by", fields: [issued_by_id], references: [id])
+  approved_by        User?              @relation("approved_by", fields: [approved_by_id], references: [id])
   deleted_by         User?              @relation("deleted_by", fields: [deleted_by_id], references: [id])
   certificate_orders CertificateOrder[]
   certificate_events CertificateEvent[]

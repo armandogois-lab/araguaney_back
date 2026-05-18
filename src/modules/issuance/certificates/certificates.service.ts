@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -295,16 +296,12 @@ export class CertificatesService {
         }
 
         const cycleWeek = isoWeek(input.issue_date);
-        const codeRows = await tx.$queryRaw<Array<{ code: string }>>(
-          Prisma.sql`SELECT cfb.next_certificate_code() AS code`,
-        );
-        const certificate_code = codeRows[0]!.code;
 
         const cert = await tx.certificate.create({
           data: {
-            certificate_code,
+            certificate_code: null,
             certificate_type: 'standard',
-            status: 'issued',
+            status: 'draft',
             investor_id: input.investor_id,
             investor_capital: capital,
             annual_rate: rate,
@@ -336,15 +333,14 @@ export class CertificatesService {
 
         await tx.order.updateMany({
           where: { id: { in: selected.map((o) => o.id) } },
-          data: { status: 'assigned' },
+          data: { status: 'reserved' },
         });
 
         await tx.certificateEvent.create({
           data: {
             certificate_id: cert.id,
-            event_type: 'created',
+            event_type: 'draft_created',
             payload: {
-              certificate_code,
               order_count: selected.length,
               nominal_actual: nominalActual.toFixed(4),
               investor_paid: payouts.investorPaid.toFixed(4),
@@ -356,10 +352,9 @@ export class CertificatesService {
         await this.audit.recordChange({
           entityType: 'certificate',
           entityId: cert.id,
-          action: 'create',
+          action: 'create_draft',
           actorId,
           payload: {
-            certificate_code,
             inputs: {
               capital: capital.toFixed(4),
               rate: rate.toFixed(6),
@@ -373,7 +368,7 @@ export class CertificatesService {
           tx,
         });
 
-        return { id: cert.id, certificate_code };
+        return { id: cert.id, status: 'draft' as const };
       },
       { timeout: 30_000 },
     );
@@ -449,7 +444,7 @@ export class CertificatesService {
     return toCertificateDetail(c as unknown as CertificateDetailRow);
   }
 
-  async cancel(id: string, reason: string, actorId: string) {
+  async cancel(id: string, reason: string | undefined, actorId: string, actorRole: AuthUser['role']) {
     return await this.prisma.$transaction(
       async (tx) => {
         const lockedCertRows = await tx.$queryRaw<
@@ -472,11 +467,36 @@ export class CertificatesService {
         }
         const cert = lockedCertRows[0]!;
 
-        if (cert.status !== 'issued') {
+        if (cert.status !== 'draft' && cert.status !== 'issued') {
           throw new ConflictException({
-            message: 'Solo se pueden cancelar certificados con estado "issued"',
+            message: `Solo se pueden cancelar borradores o certificados emitidos (status actual: ${cert.status})`,
             current_status: cert.status,
           });
+        }
+
+        // Draft cancel: creator or admin. Issued cancel: admin with cert.cancel.
+        if (cert.status === 'draft') {
+          const ownerRow = await tx.$queryRaw<Array<{ issued_by_id: string }>>(
+            Prisma.sql`SELECT issued_by_id FROM cfb.certificates WHERE id = ${id}::uuid`,
+          );
+          const isCreator = ownerRow[0]?.issued_by_id === actorId;
+          const isAdmin = actorRole === 'admin';
+          if (!isCreator && !isAdmin) {
+            throw new ForbiddenException(
+              'Solo el creador del borrador o un admin puede cancelarlo',
+            );
+          }
+        } else {
+          // status === 'issued': require certificate.cancel grant for actor's role
+          const hasCancelPerm = await tx.rolePermission.findFirst({
+            where: { role: actorRole, permission: { key: 'certificate.cancel' } },
+            select: { id: true },
+          });
+          if (!hasCancelPerm) {
+            throw new ForbiddenException(
+              'Solo un usuario con permiso certificate.cancel puede cancelar certificados emitidos',
+            );
+          }
         }
 
         const certOrders = await tx.$queryRaw<Array<{ order_id: string }>>(
@@ -492,9 +512,17 @@ export class CertificatesService {
           where: { id },
           data: {
             status: 'cancelled',
-            deleted_at: now,
-            deleted_by_id: actorId,
-            deleted_reason: reason,
+            cancelled_at: now,
+            cancellation_reason: reason ?? null,
+            // For issued certs we also populate the legacy soft-delete columns to
+            // preserve symmetry with pre-Slice-13 data. Drafts skip them.
+            ...(cert.status === 'issued'
+              ? {
+                  deleted_at: now,
+                  deleted_by_id: actorId,
+                  deleted_reason: reason ?? 'cancelled_without_reason',
+                }
+              : {}),
           },
         });
 
@@ -531,9 +559,10 @@ export class CertificatesService {
           action: 'cancel',
           actorId,
           payload: {
+            from_status: cert.status,
             certificate_code: cert.certificate_code,
             certificate_type: cert.certificate_type,
-            reason,
+            reason: reason ?? null,
             order_count: orderIds.length,
             released_order_ids: orderIds,
           },
@@ -546,6 +575,103 @@ export class CertificatesService {
           status: 'cancelled' as const,
           cancelled_at: now.toISOString(),
           released_order_count: orderIds.length,
+        };
+      },
+      { timeout: 30_000 },
+    );
+  }
+
+  async approve(id: string, actorId: string) {
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const lockedCertRows = await tx.$queryRaw<
+          Array<{
+            id: string;
+            status: string;
+            certificate_code: string | null;
+            certificate_type: string;
+            deleted_at: Date | null;
+          }>
+        >(
+          Prisma.sql`SELECT id, status, certificate_code, certificate_type, deleted_at
+                     FROM cfb.certificates
+                     WHERE id = ${id}::uuid
+                     FOR UPDATE`,
+        );
+
+        if (lockedCertRows.length === 0 || lockedCertRows[0]!.deleted_at !== null) {
+          throw new NotFoundException('Certificado no encontrado');
+        }
+        const cert = lockedCertRows[0]!;
+
+        if (cert.status !== 'draft') {
+          throw new ConflictException({
+            message: `Solo se pueden aprobar borradores (status actual: ${cert.status})`,
+            current_status: cert.status,
+          });
+        }
+
+        const codeRows = await tx.$queryRaw<Array<{ code: string }>>(
+          Prisma.sql`SELECT cfb.next_certificate_code() AS code`,
+        );
+        const certificate_code = codeRows[0]!.code;
+        const now = new Date();
+
+        await tx.certificate.update({
+          where: { id },
+          data: {
+            status: 'issued',
+            certificate_code,
+            approved_by_id: actorId,
+            approved_at: now,
+          },
+        });
+
+        const certOrders = await tx.certificateOrder.findMany({
+          where: { certificate_id: id, released_at: null },
+          select: { order_id: true },
+        });
+        const orderIds = certOrders.map((co) => co.order_id);
+        if (orderIds.length > 0) {
+          await tx.order.updateMany({
+            where: { id: { in: orderIds } },
+            data: { status: 'assigned' },
+          });
+        }
+
+        await tx.certificateEvent.create({
+          data: {
+            certificate_id: id,
+            event_type: 'approved',
+            payload: {
+              certificate_code,
+              order_count: orderIds.length,
+              approved_at: now.toISOString(),
+            } as Prisma.InputJsonValue,
+            actor_id: actorId,
+          },
+        });
+
+        await this.audit.recordChange({
+          entityType: 'certificate',
+          entityId: id,
+          action: 'approve',
+          actorId,
+          payload: {
+            before: { status: 'draft' },
+            after: { status: 'issued', certificate_code },
+            certificate_type: cert.certificate_type,
+            order_count: orderIds.length,
+          },
+          tx,
+        });
+
+        return {
+          id,
+          certificate_code,
+          status: 'issued' as const,
+          approved_at: now.toISOString(),
+          assigned_order_count: orderIds.length,
         };
       },
       { timeout: 30_000 },

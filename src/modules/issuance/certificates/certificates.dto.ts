@@ -38,8 +38,11 @@ export const CertificatesListQuerySchema = PaginationSchema.extend({
 });
 
 export const CertificateCancelSchema = z.object({
-  reason: z.string().min(5).max(1000),
+  reason: z.string().trim().max(1000).optional(),
 });
+
+export const CertificateApproveSchema = z.object({}).strict();
+export type CertificateApprove = z.infer<typeof CertificateApproveSchema>;
 
 export type CertificateSimulate = z.infer<typeof CertificateSimulateSchema>;
 export type CertificateIssue = z.infer<typeof CertificateIssueSchema>;
