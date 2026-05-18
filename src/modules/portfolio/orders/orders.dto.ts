@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { PaginationSchema } from '../../../common/dto/pagination.schema';
 
-export const OrderStatusEnum = z.enum(['available', 'assigned', 'matured', 'defaulted']);
+export const OrderStatusEnum = z.enum([
+  'available',
+  'reserved',
+  'assigned',
+  'matured',
+  'defaulted',
+]);
 
 const OrdersFiltersBase = z.object({
   status: OrderStatusEnum.optional(),
