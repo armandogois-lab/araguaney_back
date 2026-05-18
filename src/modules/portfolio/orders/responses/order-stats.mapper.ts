@@ -6,7 +6,7 @@ export type StatsGroupRow = {
   _sum: { total_amount: Decimal | null; installments_sum: Decimal | null };
 };
 
-const STATUSES = ['available', 'assigned', 'matured', 'defaulted'] as const;
+const STATUSES = ['available', 'reserved', 'assigned', 'matured', 'defaulted'] as const;
 
 export function toOrderStats(rows: StatsGroupRow[]) {
   const by_status: Record<
