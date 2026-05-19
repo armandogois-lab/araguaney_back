@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { ExcelParserService } from './excel-parser.service';
 import { normalizeRif } from './rif-normalizer';
 import { ErrorCodes, type ErrorCode } from './errors/error-codes';
@@ -33,6 +34,7 @@ export class IngestionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly parser: ExcelParserService,
+    private readonly audit: AuditService,
   ) {}
 
   async parseAndImport(opts: {
@@ -50,6 +52,13 @@ export class IngestionService {
           rejection_reason: parseResult.reason,
           imported_at: new Date(),
         },
+      });
+      await this.audit.recordChange({
+        entityType: 'batch',
+        entityId: opts.batchId,
+        action: 'reject',
+        actorId: opts.actorId,
+        payload: { reason: parseResult.reason },
       });
       return {
         status: 'rejected',
@@ -416,6 +425,20 @@ export class IngestionService {
             total_installments_amount: totalInstallments,
             imported_at: new Date(),
           },
+        });
+
+        await this.audit.recordChange({
+          entityType: 'batch',
+          entityId: opts.batchId,
+          action: 'ingest',
+          actorId: opts.actorId,
+          payload: {
+            rows_imported: validGroups.length,
+            rows_rejected: errors.length,
+            total_orders_amount: totalOrders.toFixed(4),
+            total_installments_amount: totalInstallments.toFixed(4),
+          },
+          tx,
         });
 
         return {
