@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IngestionService } from './ingestion.service';
 import { ExcelParserService } from './excel-parser.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { buildWorkbook, STANDARD_HEADERS } from '../../../test/helpers/xlsx.helper';
+
+function makeAudit() {
+  return { recordChange: vi.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+}
 
 function row(overrides: Record<string, unknown> = {}): Array<string | number | Date | null> {
   const base: Record<string, string | number | Date | null> = {
@@ -168,7 +173,7 @@ describe('IngestionService.parseAndImport', () => {
     });
 
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -191,7 +196,7 @@ describe('IngestionService.parseAndImport', () => {
     const headers = STANDARD_HEADERS.filter((h) => h !== 'Rif');
     const buffer = await buildWorkbook({ sheets: [{ name: 'S1', headers, rows: [row()] }] });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -212,7 +217,7 @@ describe('IngestionService.parseAndImport', () => {
         'J-12345678-9': { id: 'merch-existing', current_name: 'Mercantil C.A.' },
       },
     });
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -240,7 +245,7 @@ describe('IngestionService.parseAndImport', () => {
         'J-12345678-9': { id: 'merch-existing', current_name: 'Mercantil C.A.' },
       },
     });
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -264,7 +269,7 @@ describe('IngestionService.parseAndImport', () => {
       ],
     });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -283,7 +288,7 @@ describe('IngestionService.parseAndImport', () => {
       sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows: [row()] }],
     });
     const prisma = makePrismaMock({ existingOrderIds: new Set(['ORD-001']) });
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -302,7 +307,7 @@ describe('IngestionService.parseAndImport', () => {
       ],
     });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -331,7 +336,7 @@ describe('IngestionService.parseAndImport', () => {
       ],
     });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -358,7 +363,7 @@ describe('IngestionService.parseAndImport', () => {
       ],
     });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -387,7 +392,7 @@ describe('IngestionService.parseAndImport', () => {
       sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows }],
     });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
@@ -425,7 +430,7 @@ describe('IngestionService.parseAndImport', () => {
       sheets: [{ name: 'S1', headers: [...STANDARD_HEADERS], rows }],
     });
     const prisma = makePrismaMock();
-    const svc = new IngestionService(prisma, parser);
+    const svc = new IngestionService(prisma, parser, makeAudit());
     const result = await svc.parseAndImport({
       batchId: 'batch-1',
       fileBuffer: buffer,
