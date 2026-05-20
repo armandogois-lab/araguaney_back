@@ -317,17 +317,13 @@ export class SweepService {
         }
 
         const cycleWeek = isoWeek(input.issue_date);
-        const codeRows = await tx.$queryRaw<[{ code: string }]>(
-          Prisma.sql`SELECT cfb.next_certificate_code() AS code`,
-        );
-        const certificateCode = codeRows[0].code;
 
         try {
           const cert = await tx.certificate.create({
             data: {
-              certificate_code: certificateCode,
+              certificate_code: null,
               certificate_type: 'sweep',
-              status: 'issued',
+              status: 'draft',
               investor_id: investor.id,
               investor_capital: investorCapital,
               annual_rate: rate,
@@ -359,16 +355,15 @@ export class SweepService {
 
           await tx.order.updateMany({
             where: { id: { in: selected.map((o) => o.id) } },
-            data: { status: 'assigned' },
+            data: { status: 'reserved' },
           });
 
           await tx.certificateEvent.create({
             data: {
               certificate_id: cert.id,
-              event_type: 'created',
+              event_type: 'draft_created',
               payload: {
                 certificate_type: 'sweep',
-                certificate_code: certificateCode,
                 cycle_week: cycleWeek,
                 order_count: selected.length,
                 nominal_actual: nominalActual.toFixed(4),
@@ -381,11 +376,10 @@ export class SweepService {
           await this.audit.recordChange({
             entityType: 'certificate',
             entityId: cert.id,
-            action: 'create',
+            action: 'create_draft',
             actorId,
             payload: {
               certificate_type: 'sweep',
-              certificate_code: certificateCode,
               cycle_week: cycleWeek,
               inputs: {
                 rate: rate.toFixed(6),
@@ -399,7 +393,7 @@ export class SweepService {
             tx,
           });
 
-          return { id: cert.id, certificate_code: certificateCode };
+          return { id: cert.id, status: 'draft' as const };
         } catch (e) {
           if (
             e instanceof Prisma.PrismaClientKnownRequestError &&
