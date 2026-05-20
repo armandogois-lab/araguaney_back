@@ -105,7 +105,7 @@ describe('SweepController', () => {
   });
 
   it('POST /api/certificates/sweep → 201 happy', async () => {
-    svc.issueSweep.mockResolvedValueOnce({ id: 'cert-1', certificate_code: 'C4575A' });
+    svc.issueSweep.mockResolvedValueOnce({ id: 'cert-1', status: 'draft' });
     const t = await mintTestJwt({ sub: 'auth-uuid' });
     const res = await request(app.getHttpServer())
       .post('/api/certificates/sweep')
@@ -117,7 +117,7 @@ describe('SweepController', () => {
         expected_payload_hash: 'a'.repeat(64),
       })
       .expect(201);
-    expect(res.body.certificate_code).toBe('C4575A');
+    expect(res.body.status).toBe('draft');
   });
 
   it('POST /api/certificates/sweep → 409 when service throws ConflictException', async () => {

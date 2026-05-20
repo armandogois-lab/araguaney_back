@@ -196,7 +196,6 @@ function makePrismaForIssue(
       max_due_date: Date;
       purchase_date: Date;
     }>;
-    certificateCode?: string;
     certificateCreateError?: Error;
   } = {},
 ) {
@@ -208,9 +207,6 @@ function makePrismaForIssue(
           ? (template as string[]).join('?')
           : String(template);
       if (sql.includes('FOR UPDATE')) return opts.lockedOrders ?? [];
-      if (sql.includes('next_certificate_code')) {
-        return [{ code: opts.certificateCode ?? 'C9999A' }];
-      }
       return [];
     }),
     investor: {
@@ -328,7 +324,8 @@ describe('SweepService.issueSweep', () => {
     expect(tx.order.updateMany).toHaveBeenCalledOnce();
     expect(tx.certificateEvent.create).toHaveBeenCalledOnce();
     expect(audit.recordChange).toHaveBeenCalledOnce();
-    expect((result as { id: string; certificate_code: string }).id).toBe('cert-sweep-1');
+    expect((result as { id: string; status: string }).id).toBe('cert-sweep-1');
+    expect((result as { id: string; status: string }).status).toBe('draft');
   });
 
   it('throws 422 when locked set differs from current eligible set', async () => {
