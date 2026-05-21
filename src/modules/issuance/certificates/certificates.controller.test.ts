@@ -28,7 +28,14 @@ describe('CertificatesController', () => {
   let prismaPerms: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    svc = { simulate: vi.fn(), issue: vi.fn(), list: vi.fn(), detail: vi.fn(), cancel: vi.fn(), approve: vi.fn() };
+    svc = {
+      simulate: vi.fn(),
+      issue: vi.fn(),
+      list: vi.fn(),
+      detail: vi.fn(),
+      cancel: vi.fn(),
+      approve: vi.fn(),
+    };
     prismaPerms = vi
       .fn()
       .mockResolvedValue([

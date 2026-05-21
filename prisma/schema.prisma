@@ -396,6 +396,7 @@ model Order {
   installments_sum  Decimal     @db.Decimal(18, 4)
   num_installments  Int
   purchase_date     DateTime    @db.Date
+  min_due_date      DateTime    @db.Date
   max_due_date      DateTime    @db.Date
   status            OrderStatus @default(available)
   imported_at       DateTime    @default(dbgenerated("now()")) @db.Timestamptz(6)

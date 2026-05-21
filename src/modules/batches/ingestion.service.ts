@@ -341,6 +341,7 @@ export class IngestionService {
           installments_sum: Prisma.Decimal;
           num_installments: number;
           purchase_date: Date;
+          min_due_date: Date;
           max_due_date: Date;
           status: 'available';
         }> = [];
@@ -363,6 +364,10 @@ export class IngestionService {
             (max, i) => (i.dueDate > max ? i.dueDate : max),
             g.installments[0]!.dueDate,
           );
+          const minDueDate = g.installments.reduce(
+            (min, i) => (i.dueDate < min ? i.dueDate : min),
+            g.installments[0]!.dueDate,
+          );
 
           ordersToCreate.push({
             id: orderId,
@@ -374,6 +379,7 @@ export class IngestionService {
             installments_sum: installmentsSum,
             num_installments: g.installments.length,
             purchase_date: g.fechaDeCompra,
+            min_due_date: minDueDate,
             max_due_date: maxDueDate,
             status: 'available',
           });
