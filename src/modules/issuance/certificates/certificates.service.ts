@@ -454,7 +454,12 @@ export class CertificatesService {
     return toCertificateDetail(c as unknown as CertificateDetailRow);
   }
 
-  async cancel(id: string, reason: string | undefined, actorId: string, actorRole: AuthUser['role']) {
+  async cancel(
+    id: string,
+    reason: string | undefined,
+    actorId: string,
+    actorRole: AuthUser['role'],
+  ) {
     return await this.prisma.$transaction(
       async (tx) => {
         const lockedCertRows = await tx.$queryRaw<

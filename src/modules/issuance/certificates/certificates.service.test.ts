@@ -230,13 +230,15 @@ describe('CertificatesService.simulate', () => {
     (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
 
     const svc = new CertificatesService(prisma, makeAudit());
-    await svc.simulate({
-      investor_id: 'inv-1',
-      capital: 100,
-      rate: 0.13,
-      term_days: 42,
-      issue_date: new Date('2026-05-15'),
-    }).catch(() => undefined);
+    await svc
+      .simulate({
+        investor_id: 'inv-1',
+        capital: 100,
+        rate: 0.13,
+        term_days: 42,
+        issue_date: new Date('2026-05-15'),
+      })
+      .catch(() => undefined);
 
     const call = (prisma.order.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.where).toMatchObject({
