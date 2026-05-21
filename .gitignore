@@ -44,3 +44,4 @@ coverage/
 
 # Vitest
 .vitest-cache/
+.claude/
