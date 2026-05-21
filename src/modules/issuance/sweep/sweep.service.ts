@@ -250,6 +250,16 @@ export class SweepService {
           });
         }
 
+        const minDue = lockedOrders.reduce(
+          (m, o) => (o.min_due_date < m ? o.min_due_date : m),
+          new Date(8640000000000000),
+        );
+        if (minDue < input.issue_date) {
+          throw new UnprocessableEntityException(
+            'Una orden tiene cuotas que vencen antes de la fecha de emisión del certificado',
+          );
+        }
+
         const maxDue = lockedOrders.reduce(
           (m, o) => (o.max_due_date > m ? o.max_due_date : m),
           new Date(0),
