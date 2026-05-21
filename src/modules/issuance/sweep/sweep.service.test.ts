@@ -214,6 +214,7 @@ function makePrismaForIssue(
     lockedOrders?: Array<{
       id: string;
       installments_sum: Prisma.Decimal;
+      min_due_date?: Date;
       max_due_date: Date;
       merchant_id: string;
       status: string;
@@ -238,7 +239,12 @@ function makePrismaForIssue(
         : Array.isArray(template)
           ? (template as string[]).join('?')
           : String(template);
-      if (sql.includes('FOR UPDATE')) return opts.lockedOrders ?? [];
+      if (sql.includes('FOR UPDATE'))
+        return (opts.lockedOrders ?? []).map((o) => ({
+          ...o,
+          // Default min_due_date to issue_date (2026-05-15) so existing tests never trip the check
+          min_due_date: o.min_due_date ?? new Date('2026-05-15'),
+        }));
       return [];
     }),
     investor: {
@@ -400,6 +406,37 @@ describe('SweepService.issueSweep', () => {
         'actor-1',
       ),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('throws 422 when MIN(min_due_date) < issue_date', async () => {
+    const lockedOrders = [
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        // min_due_date is BEFORE the sweep issue_date (2026-05-15) → should trigger the check
+        min_due_date: new Date('2026-05-10'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+        external_order_id: 'ORD-a',
+      },
+    ];
+    const prisma = makePrismaForIssue({ lockedOrders });
+    const svc = new SweepService(prisma, makeAudit());
+    await expect(
+      svc.issueSweep(
+        {
+          term_days: 14,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'],
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toMatchObject({
+      constructor: UnprocessableEntityException,
+      message: expect.stringContaining('antes de la fecha de emisión del certificado'),
+    });
   });
 
   it('throws 409 with cycle_week when Prisma P2002 fires (sweep already this week)', async () => {

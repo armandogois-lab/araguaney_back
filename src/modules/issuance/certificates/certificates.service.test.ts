@@ -256,6 +256,7 @@ function makePrismaForIssue(
     lockedOrders?: Array<{
       id: string;
       installments_sum: Prisma.Decimal;
+      min_due_date?: Date;
       max_due_date: Date;
       merchant_id: string;
       status: string;
@@ -282,6 +283,8 @@ function makePrismaForIssue(
           id: o.id,
           external_order_id: o.external_order_id ?? `ORD-${o.id}`,
           installments_sum: o.installments_sum,
+          // Default min_due_date to issue_date (2026-05-15) so existing tests never trip the check
+          min_due_date: o.min_due_date ?? new Date('2026-05-15'),
           max_due_date: o.max_due_date,
           merchant_id: o.merchant_id,
           status: o.status,
@@ -526,6 +529,39 @@ describe('CertificatesService.issue', () => {
         'actor-1',
       ),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('throws 422 when MIN(min_due_date) < issue_date', async () => {
+    const lockedOrders = [
+      {
+        id: 'o-a',
+        installments_sum: D('60'),
+        // min_due_date is BEFORE the cert issue_date (2026-05-15) → should trigger the check
+        min_due_date: new Date('2026-05-10'),
+        max_due_date: new Date('2026-05-22'),
+        merchant_id: 'm-a',
+        status: 'available',
+      },
+    ];
+    const prisma = makePrismaForIssue({ lockedOrders });
+    const svc = new CertificatesService(prisma, makeAudit());
+    await expect(
+      svc.issue(
+        {
+          investor_id: 'inv-1',
+          capital: 100,
+          rate: 0.13,
+          term_days: 42,
+          issue_date: new Date('2026-05-15'),
+          order_ids: ['o-a'],
+          expected_payload_hash: 'a'.repeat(64),
+        },
+        'actor-1',
+      ),
+    ).rejects.toMatchObject({
+      constructor: UnprocessableEntityException,
+      message: expect.stringContaining('antes de la fecha de emisión del certificado'),
+    });
   });
 
   it('inserts certificate_event with event_type=draft_created and updates orders to reserved', async () => {
