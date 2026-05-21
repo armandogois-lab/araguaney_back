@@ -173,6 +173,38 @@ describe('SweepService.simulateSweep', () => {
       svc.simulateSweep({ term_days: 14, issue_date: new Date('2026-05-15') }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('filters out orders with installments due before sweep issue_date', async () => {
+    const prisma = makePrismaForSimulate();
+    (prisma.investor.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInternal());
+    (prisma.setting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 1,
+      default_sweep_rate: D('0.08'),
+    });
+    // Return empty list — we only care about the filter passed to findMany, not downstream behavior
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const svc = new SweepService(prisma, makeAudit());
+    const issueDate = new Date('2026-05-22');
+
+    // Expect 422 because no eligible orders returned, but we still verify the where clause
+    await expect(
+      svc.simulateSweep({ term_days: 42, issue_date: issueDate }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    const expectedMaturity = new Date('2026-05-22');
+    expectedMaturity.setUTCDate(expectedMaturity.getUTCDate() + 42); // 2026-07-03
+
+    const whereArg = (prisma.order.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0].where;
+    expect(whereArg).toMatchObject({
+      status: 'available',
+      min_due_date: { gte: issueDate },
+      max_due_date: { lte: expectedMaturity },
+    });
+
+    const selectArg = (prisma.order.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0].select;
+    expect(selectArg).toMatchObject({ min_due_date: true, max_due_date: true });
+  });
 });
 
 function makePrismaForIssue(
