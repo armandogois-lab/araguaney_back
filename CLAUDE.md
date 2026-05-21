@@ -28,7 +28,7 @@ Cuando agregas un endpoint nuevo, **regenera y commitea `openapi.json`** para qu
 
 Estas reglas son inviolables y están blindadas a nivel de base de datos:
 
-1. **Maturity boundary**: Ninguna cuota puede vencer después del vencimiento del certificado.
+1. **Maturity boundary**: Toda cuota debe vencer dentro de `[cert.issue_date, cert.maturity_date]`. Ninguna cuota puede ser anterior al inicio del cert ni posterior al vencimiento. Blindada en DB con trigger `cfb.enforce_maturity_boundary` (ver `infra/sql/007_invariants_complete.sql` + `015_maturity_lower_bound.sql`).
 2. **Order indivisibility**: Una orden entra completa a un certificado o no entra. Implementada con `UNIQUE (order_id)` en `cfb.certificate_orders`.
 3. **Round-down only**: La suma de cuotas en el pool nunca puede exceder `nominal_target`. El gap se devuelve al inversor en cash.
 
