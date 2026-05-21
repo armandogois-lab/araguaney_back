@@ -223,6 +223,29 @@ describe('CertificatesService.simulate', () => {
     expect(r.concentration.top[0]!.merchant_id).toBe('big');
     expect(r.concentration.top[0]!.amount).toBe('70.0000');
   });
+
+  it('filters out orders with installments due before cert issue_date', async () => {
+    const prisma = makePrismaForSimulate();
+    (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakeInvestor());
+    (prisma.order.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const svc = new CertificatesService(prisma, makeAudit());
+    await svc.simulate({
+      investor_id: 'inv-1',
+      capital: 100,
+      rate: 0.13,
+      term_days: 42,
+      issue_date: new Date('2026-05-15'),
+    }).catch(() => undefined);
+
+    const call = (prisma.order.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where).toMatchObject({
+      status: 'available',
+      min_due_date: { gte: new Date('2026-05-15') },
+      max_due_date: { lte: new Date('2026-06-26') }, // 2026-05-15 + 42d
+    });
+    expect(call.select).toMatchObject({ min_due_date: true, max_due_date: true });
+  });
 });
 
 function makePrismaForIssue(

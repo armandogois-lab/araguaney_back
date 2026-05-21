@@ -60,13 +60,18 @@ export class CertificatesService {
     maturityDate.setUTCDate(maturityDate.getUTCDate() + input.term_days);
 
     const eligible = await this.prisma.order.findMany({
-      where: { status: 'available', max_due_date: { lte: maturityDate } },
+      where: {
+        status: 'available',
+        min_due_date: { gte: input.issue_date },
+        max_due_date: { lte: maturityDate },
+      },
       select: {
         id: true,
         external_order_id: true,
         installments_sum: true,
         merchant_id: true,
         num_installments: true,
+        min_due_date: true,
         max_due_date: true,
         purchase_date: true,
       },
@@ -213,12 +218,13 @@ export class CertificatesService {
             id: string;
             external_order_id: string;
             installments_sum: Prisma.Decimal;
+            min_due_date: Date;
             max_due_date: Date;
             merchant_id: string;
             status: string;
           }>
         >(
-          Prisma.sql`SELECT id, external_order_id, installments_sum, max_due_date, merchant_id, status
+          Prisma.sql`SELECT id, external_order_id, installments_sum, min_due_date, max_due_date, merchant_id, status
                      FROM cfb.orders
                      WHERE id = ANY(${input.order_ids}::uuid[])
                      FOR UPDATE`,
@@ -237,6 +243,16 @@ export class CertificatesService {
             message: 'Orden(es) ya asignada(s) a otro certificado',
             conflicting_order_ids: conflicting.map((o) => o.id),
           });
+        }
+
+        const minDue = lockedOrders.reduce(
+          (m, o) => (o.min_due_date < m ? o.min_due_date : m),
+          new Date(8640000000000000),
+        );
+        if (minDue < input.issue_date) {
+          throw new UnprocessableEntityException(
+            'Una orden tiene cuotas que vencen antes de la fecha de emisión del certificado',
+          );
         }
 
         const maxDue = lockedOrders.reduce(
