@@ -104,21 +104,30 @@ describe('CertificatesService.simulate', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('throws 400 when investor.kind=internal', async () => {
+  it('does NOT block investor.kind=internal (Cashea Valores can issue standard certs too)', async () => {
     const prisma = makePrismaForSimulate();
     (prisma.investor.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       fakeInvestor({ kind: 'internal' }),
     );
     const svc = new CertificatesService(prisma, makeAudit());
-    await expect(
-      svc.simulate({
+    // The previous behavior was: throw BadRequestException("Inversor interno
+    // reservado para certificados sweep"). That restriction was removed so
+    // Cashea Valores (the internal investor used for sweep) can also be the
+    // counterparty of standard certs. Asserting it does NOT throw a 400 for
+    // the kind reason — failures from the stub (e.g. 422 no eligible orders)
+    // are downstream and unrelated.
+    const err = await svc
+      .simulate({
         investor_id: 'inv-1',
         capital: 100,
         rate: 0.13,
         term_days: 42,
         issue_date: new Date('2026-05-15'),
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      })
+      .catch((e) => e);
+    if (err) {
+      expect(err).not.toBeInstanceOf(BadRequestException);
+    }
   });
 
   it('throws 400 when investor.status=inactive', async () => {

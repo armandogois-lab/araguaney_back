@@ -48,9 +48,6 @@ export class CertificatesService {
   async simulate(input: CertificateSimulate) {
     const investor = await this.prisma.investor.findUnique({ where: { id: input.investor_id } });
     if (!investor) throw new NotFoundException('Inversor no encontrado');
-    if (investor.kind === 'internal') {
-      throw new BadRequestException('Inversor interno reservado para certificados sweep');
-    }
     if (investor.status !== 'active') {
       throw new BadRequestException('Inversor inactivo');
     }
@@ -197,9 +194,6 @@ export class CertificatesService {
       async (tx) => {
         const investor = await tx.investor.findUnique({ where: { id: input.investor_id } });
         if (!investor) throw new NotFoundException('Inversor no encontrado');
-        if (investor.kind === 'internal') {
-          throw new BadRequestException('Inversor interno reservado para certificados sweep');
-        }
         if (investor.status !== 'active') {
           throw new BadRequestException('Inversor inactivo');
         }
