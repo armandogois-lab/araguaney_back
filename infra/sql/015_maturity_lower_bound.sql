@@ -21,13 +21,23 @@ FROM (
 WHERE o.id = sub.order_id
   AND o.min_due_date IS NULL;
 
+-- 2b. Defensa: si quedó alguna fila sin installments (orphan), usar purchase_date.
+-- Una orden sin cuotas no debería existir, pero si existe, dejamos min_due_date
+-- en una fecha pasada (purchase_date) garantiza que el trigger la rechace en
+-- futuras asignaciones y que el filtro de elegibilidad la excluya.
+UPDATE cfb.orders
+SET min_due_date = purchase_date
+WHERE min_due_date IS NULL;
+
 -- 3. NOT NULL después del backfill
 ALTER TABLE cfb.orders
   ALTER COLUMN min_due_date SET NOT NULL;
 
--- 4. Índice para la query de elegibilidad (status + min_due_date)
-CREATE INDEX IF NOT EXISTS idx_orders_status_min_due
-  ON cfb.orders USING btree (status, min_due_date);
+-- 4. Índice parcial para la query de elegibilidad (matchea patrón de
+-- idx_orders_eligibility en 003_portfolio.sql).
+CREATE INDEX IF NOT EXISTS idx_orders_available_min_due
+  ON cfb.orders USING btree (min_due_date)
+  WHERE status = 'available';
 
 -- 5. Extender el trigger de maturity boundary para chequear ambos bordes
 CREATE OR REPLACE FUNCTION cfb.enforce_maturity_boundary() RETURNS trigger
