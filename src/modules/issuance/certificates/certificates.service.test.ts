@@ -238,7 +238,7 @@ describe('CertificatesService.simulate', () => {
       issue_date: new Date('2026-05-15'),
     }).catch(() => undefined);
 
-    const call = (prisma.order.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (prisma.order.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.where).toMatchObject({
       status: 'available',
       min_due_date: { gte: new Date('2026-05-15') },
